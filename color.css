@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ma première page HTML</title>
+    <style>
+        body {
+            background-color: black;
+            color: orange;
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1 {
+            color: orange;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            width: 200px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            color: orange;
+            background-color: black;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #66afe9;
+            box-shadow: 0 0 5px #66afe9;
+        }
+
+        input[readonly] {
+            background-color: #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>Titre de ma page</h1>
+    
+    <label for="code-pneu">Code pneu:</label>
+    <input type="text" id="code-pneu" placeholder="Entrez le code du pneu" onkeyup="afficherHauteur()">
+    
+    <br><br>
+    
+    <label for="hauteur-pneu">Hauteur du pneu:</label>
+    <input type="text" id="hauteur-pneu" readonly>
+</body>
+</html>
