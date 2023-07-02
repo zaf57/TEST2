@@ -1,29 +1,50 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>HEIGHT TIRE DETECTOR</title>
-    <script>
-        var correspondances = {
-            "692": "300",
-            "123": "250",
-            "456": "275",
-            // Ajoutez d'autres correspondances ici
-        };
-        
-        function afficherHauteur() {
-            var codePneu = document.getElementById("code-pneu").value;
-            var hauteurPneu = document.getElementById("hauteur-pneu");
-            
-            if (correspondances.hasOwnProperty(codePneu)) {
-                hauteurPneu.value = correspondances[codePneu];
-            } else {
-                hauteurPneu.value = "";
-            }
+    <title>Ma première page HTML</title>
+    <style>
+        body {
+            background-color: black;
+            color: orange;
+            font-family: Arial, sans-serif;
+            margin: 20px;
         }
+
+        h1 {
+            color: orange;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            width: 200px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            color: orange;
+            background-color: black;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #66afe9;
+            box-shadow: 0 0 5px #66afe9;
+        }
+
+        input[readonly] {
+            background-color: #eee;
+        }
+    </style>
+    <script>
+        // Votre JavaScript ici
     </script>
 </head>
 <body>
-    <h1>HEIGHT TIRE DETECTOR</h1>
+    <h1>Titre de ma page</h1>
     
     <label for="code-pneu">Code pneu:</label>
     <input type="text" id="code-pneu" placeholder="Entrez le code du pneu" onkeyup="afficherHauteur()">
