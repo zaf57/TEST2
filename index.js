@@ -3,7 +3,7 @@
 <head>
     <title>Ma première page HTML</title>
     <style>
-        /* Votre CSS ici */
+        style.css
     </style>
     <script>
         var correspondances = {}; // Variable pour stocker les correspondances de codes de pneus et de hauteurs
