@@ -1,269 +1,167 @@
+<!--
+Copyright 2018 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<!-- [START sheets_quickstart] -->
 <!DOCTYPE html>
 <html>
-<head>
-<link rel="icon" type="image/x-icon" href="favicon.ico">
+  <head>
+    <title>Sheets API Quickstart</title>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <p>Sheets API Quickstart</p>
 
+    <!--Add buttons to initiate auth sequence and sign out-->
+    <button id="authorize_button" onclick="handleAuthClick()">Authorize</button>
+    <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
 
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="manifest" href="/site.webmanifest">
-<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5">
-<meta name="msapplication-TileColor" content="#da532c">
-<meta name="theme-color" content="#ffffff">
+    <pre id="content" style="white-space: pre-wrap;"></pre>
 
+    <script type="text/javascript">
+      /* exported gapiLoaded */
+      /* exported gisLoaded */
+      /* exported handleAuthClick */
+      /* exported handleSignoutClick */
 
- 
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>height-tire-detector</title>
-    <style>
-        
-        body {
-            background-image: url("trace de pneu.png");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-color: black;
-            color: orange;
-            font-family: Arial, sans-serif;
-            margin: 20px;
+      // TODO(developer): Set to client ID and API key from the Developer Console
+      const CLIENT_ID = '578231543025-m9a7l9mqcti4d7i482rqnd5u9fgpt5ju.apps.googleusercontent.com';
+      const API_KEY = 'AIzaSyAIRpStG7VNS7XKpYmxunpO5hIsdZ_9d0E';
+
+      // Discovery doc URL for APIs used by the quickstart
+      const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+
+      // Authorization scopes required by the API; multiple scopes can be
+      // included, separated by spaces.
+      const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+
+      let tokenClient;
+      let gapiInited = false;
+      let gisInited = false;
+
+      document.getElementById('authorize_button').style.visibility = '';
+      document.getElementById('signout_button').style.visibility = '';
+
+      /**
+       * Callback after api.js is loaded.
+       */
+      function gapiLoaded() {
+        gapi.load('client', initializeGapiClient);
+      }
+
+      /**
+       * Callback after the API client is loaded. Loads the
+       * discovery doc to initialize the API.
+       */
+      async function initializeGapiClient() {
+        await gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        maybeEnableButtons();
+      }
+
+      /**
+       * Callback after Google Identity Services are loaded.
+       */
+      function gisLoaded() {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: '', // defined later
+        });
+        gisInited = true;
+        maybeEnableButtons();
+      }
+
+      /**
+       * Enables user interaction after all libraries are loaded.
+       */
+      function maybeEnableButtons() {
+        if (gapiInited && gisInited) {
+          document.getElementById('authorize_button').style.visibility = 'visible';
         }
+      }
 
-        h1 {
-            color: orange;
-            font-size: 30px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }
-
-        input[type="text"] {
-            width: 200px;
-            padding: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            color: orange;
-            background-color: #262323;
-            font-size: 20px;
-        }
-
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #66afe9;
-            box-shadow: 0 0 5px #66afe9;
-        }
-
-        input[readonly] {
-            background-color: #262323;
-        }
-        
-        footer {
-           text-align: left;
-           background-color: #000;
-           color: orange;
-           padding: 20px;
-           font-size: 10px;
-        }
-
-        footer p {
-           margin: 10;
-        }
-
-@media (max-width: 768px) {
-  /* Styles pour les appareils mobiles */
-  body {
-    background-size: cover;
-    padding: 10px;
-  }
-  
-  .input-container {
-    width: 100%;
-  }
-  
-  /* Autres styles spécifiques aux appareils mobiles */
-}
-        
-    </style>
-    <script>
-       // Votre JavaScript ici
-    </script>
-</head>
-    <head>
-    <title>HEIGHT TIRE DETECTOR</title>
-    <script>
-        var correspondances = {
-            "ZAFER":"THE CREATOR 😁",
-            "RUKIYE UZ":"♥ ASKIM ♥",
-            "692"	:	"300"	,
-         "692 trad" : "mes couiles",
-  
-"1"	:	"2"	,
-"290"	:	"310"	,
-"74"	:	"265"	,
-"642"	:	"270"	,
-"856"	:	"260"	,
-"736"	:	"250"	,
-"732"	:	"280"	,
-"510"	:	"285"	,
-"182"	:	"290"	,
-"112"	:	"275"	,
-"77"	:	"260"	,
-"218"	:	"275"	,
-"586"	:	"240"	,
-"801"	:	"230"	,
-"157"	:	"270"	,
-"811"	:	"260"	,
-"265"	:	"250"	,
-"274"	:	"260"	,
-"652"	:	"330"	,
-"552"	:	"280"	,
-"457"	:	"250"	,
-"399"	:	"260"	,
-"44"	:	"295"	,
-"719"	:	"280"	,
-"423"	:	"280"	,
-"175"	:	"250"	,
-"503"	:	"260"	,
-"125"	:	"265"	,
-"138"	:	"315"	,
-"820"	:	"245"	,
-"154"	:	"325"	,
-"749"	:	"335"	,
-"485"	:	"310"	,
-"119"	:	"310"	,
-"617"	:	"330"	,
-"758"	:	"295"	,
-"145"	:	"275"	,
-"583"	:	"320"	,
-"369"	:	"310"	,
-"643"	:	"310"	,
-"680"	:	"285"	,
-"154"	:	"325"	,
-"792"	:	"320"	,
-"718"	:	"330"	,
-"775"	:	"260"	,
-"204"	:	"270"	,
-"777"	:	"310"	,
-"809"	:	"270"	,
-"663"	:	"265"	,
-"744"	:	"270"	,
-"899"	:	"310"	,
-"623"	:	"290"	,
-"153"	:	"325"	,
-"901"	:	"275"	,
-"846"	:	"295"	,
-"604"	:	"295"	,
-"714"	:	"275"	,
-"430"	:	"290"	,
-"567"	:	"325"	,
-"872"	:	"295"	,
-"49"	:	"275"	,
-"201"	:	"285"	,
-"132"	:	"250"	,
-"190"	:	"305"	,
-"192"	:	"285"	,
-"83"	:	"295"	,
-"671"	:	"305"	,
-"139"	:	"250"	,
-"328"	:	"255"	,
-"861"	:	"305"	,
-"290"	:	"310"	,
-"668"	:	"305"	,
-"935"	:	"310"	,
-"863"	:	"275"	,
-"442"	:	"300"	,
-"635"	:	"295"	,
-"688"	:	"310"	,
-"626"	:	"305"	,
-"145"	:	"275"	,
-"227"	:	"325"	,
-"382"	:	"295"	,
-"535"	:	"295"	,
-"747"	:	"250"	,
-"733"	:	"320"	,
-"652"	:	"330"	,
-"57"	:	"260"	,
-"149"	:	"270"	,
-"456"	:	"235"	,
-"470"	:	"265"	,
-"576"	:	"260"	,
-"377"	:	"275"	,
-"192"	:	"290"	,
-"696"	:	"300"	,
-"672"	:	"295"	,
-"183"	:	"270"	,
-"442"	:	"295"	,
-"625"	:	"320"	,
-"821"	:	"300"	,
-"463"	:	"310"	,
-"129"	:	"270"	,
-"457"	:	"250"	,
-"584"	:	"270"	,
-"534"	:	"230"	,
-"853"	:	"290"	,
-"375"	:	"245"	,
-"561"	:	"280"	,
-"178"	:	"265"	,
-"767"	:	"290"	,
-"604"	:	"295"	,
-"229"	:	"300"	,
-"429"	:	"290"	,
-"306"	:	"235"	,
-"389"	:	"265"	,
-"819"	:	"200"	,
-"880"	:	"225"	,
-"112"	:	"270"	,
-"129"	:	"265"	,
-"361"	:	"245"	,
-"367"	:	"225"	,
-"404"	:	"250"	,
-"670"	:	"250"	,
-"349"	:	"250"	,
-"237"	:	"240"	,
-"243"	:	"225"	,
-"593"	:	"250"	,
-"795"	:	"255"	,
-"167"	:	"250"	,
-"692"	:	"300"	,
-"93"	:	"250"	,
-"350"	:	"225"	,
-"131"	:	"255"	,
-"324"	:	"260"	,
-"612"	:	"255"	,
-"149"	:	"265"	,
-
-            
-            // Ajoutez d'autres correspondances ici
+      /**
+       *  Sign in the user upon button click.
+       */
+      function handleAuthClick() {
+        tokenClient.callback = async (resp) => {
+          if (resp.error !== undefined) {
+            throw (resp);
+          }
+          document.getElementById('signout_button').style.visibility = 'visible';
+          document.getElementById('authorize_button').innerText = 'Refresh';
+          await listMajors();
         };
-        
-        function afficherHauteur() {
-            var codePneu = document.getElementById("code-pneu").value;
-            var hauteurPneu = document.getElementById("hauteur-pneu");
-            
-            if (correspondances.hasOwnProperty(codePneu)) {
-                hauteurPneu.value = correspondances[codePneu];
-            } else {
-                hauteurPneu.value = "";
-            }
+
+        if (gapi.client.getToken() === null) {
+          // Prompt the user to select a Google Account and ask for consent to share their data
+          // when establishing a new session.
+          tokenClient.requestAccessToken({prompt: 'consent'});
+        } else {
+          // Skip display of account chooser and consent dialog for an existing session.
+          tokenClient.requestAccessToken({prompt: ''});
         }
+      }
+
+      /**
+       *  Sign out the user upon button click.
+       */
+      function handleSignoutClick() {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+          google.accounts.oauth2.revoke(token.access_token);
+          gapi.client.setToken('');
+          document.getElementById('content').innerText = '';
+          document.getElementById('authorize_button').innerText = 'Authorize';
+          document.getElementById('signout_button').style.visibility = 'hidden';
+        }
+      }
+
+      /**
+       * Print the names and majors of students in a sample spreadsheet:
+       * https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
+       */
+      async function listMajors() {
+        let response;
+        try {
+          // Fetch first 10 files
+          response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+            range: 'Class Data!A2:E',
+          });
+        } catch (err) {
+          document.getElementById('content').innerText = err.message;
+          return;
+        }
+        const range = response.result;
+        if (!range || !range.values || range.values.length == 0) {
+          document.getElementById('content').innerText = 'No values found.';
+          return;
+        }
+        // Flatten to string to display
+        const output = range.values.reduce(
+            (str, row) => `${str}${row[0]}, ${row[4]}\n`,
+            'Name, Major:\n');
+        document.getElementById('content').innerText = output;
+      }
     </script>
-</head>
-<body>
-    <h1>HEIGHT TIRE DETECTOR</h1>
-    
-    <label for="code-pneu">Code pneu:</label>
-    <input type="text" id="code-pneu" placeholder="Entrez le code du pneu" onkeyup="afficherHauteur()" style="height: 40px;width: 300px;">
-    
-    <br><br>
-    
-    <label for="hauteur-pneu">Hauteur du pneu:</label>
-    <input type="text" id="hauteur-pneu" readonly="" style="height: 40px;width: 270px;" >
-    <span class="unit">mm</span>
-</body>
+    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+  </body>
 </html>
-
-
+<!-- [END sheets_quickstart] -->
