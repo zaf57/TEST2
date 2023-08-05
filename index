@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Notre grande fête</title>
+</head>
+<body>
+  <h1>Notre grande fête</h1>
+  <form id="test-form">
+
+    <label for="nom">Nom</label>
+    <input type="text" name="nom" id="nom" />
+
+    <br /><br />
+
+    <label for="prenom">Prénom</label>
+    <input type="text" name="prenom" id="prenom" />
+
+    <br /><br />
+
+    <label for="participation">Participerez-vous?</label>
+    <select name="participation" id="participation">
+      <option value="non">Non</option>
+      <option value="peut etre">Peut être</option>
+      <option value="oui">Oui</option>
+    </select>
+
+    <br /><br />
+
+    <label for="message">Message :</label>
+    <textarea name="message" id="message"></textarea>
+
+    <br /><br />
+
+    <button type="submit" id="submit-form" name="envoyer">Envoyer</button>
+  </form>
+
+  <script type="text/javascript" src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-serialize-object/2.5.0/jquery.serialize-object.min.js" integrity="sha512-Gn0tSSjkIGAkaZQWjx3Ctl/0dVJuTmjW/f9QyB302kFjU4uTNP4HtA32U2qXs/TRlEsK5CoEqMEMs7LnzLOBsA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+      
+  <script type="text/javascript" src="./jquery.serializeObject.min.js">
+  </script>
+  <script type="text/javascript">
+    var $form = $('form#test-form'),
+    url = 'https://script.google.com/macros/s/AKfycbyJvm-W_9uJLPg-TxtNhhBGq5scXw0B_C8Ps9Q1-j8jG_sga-npcpQWBYp7GNTOsm8/exec';
+
+    $('#submit-form').on('click', function(e) {
+      e.preventDefault();
+      var jqxhr = $.ajax({
+        url: url,
+        method: "GET",
+        dataType: "json",
+        data: $form.serializeObject()
+      }).done(function() { // Corrected: Removed extra ')' and added parameter 'response'
+        // do something with the response
+      });
+    });
+  </script>
+</body>
+</html>
