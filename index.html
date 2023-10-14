@@ -10,6 +10,9 @@
             margin: 0;
             overflow: hidden;
             transition: background-image 0.5s ease-in-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .heart {
@@ -19,9 +22,18 @@
             transform: rotate(-45deg);
             cursor: pointer;
         }
+
+        .message {
+            position: absolute;
+            font-size: 2em;
+            color: white;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+        }
     </style>
 </head>
 <body>
+    <div class="message" id="proposal">Benimle evlenir misin ?</div>
     <script>
         var maxX = window.innerWidth;
         var maxY = window.innerHeight;
@@ -48,6 +60,7 @@
                 if (!clicked) {
                     var body = document.querySelector('body');
                     body.style.backgroundImage = "url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/black%20horse.png?raw=true')";
+                    document.getElementById('proposal').style.display = 'none';
                     clicked = true;
                 }
             });
