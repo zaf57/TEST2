@@ -3,12 +3,13 @@
 <head>
     <style>
         body {
-            background-image: url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/black%20horse.png?raw=true');
+            background-image: url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/get%20married.png?raw=true');
             background-size: cover;
             background-position: center;
             height: 100vh;
             margin: 0;
             overflow: hidden;
+            transition: background-image 0.5s ease-in-out;
         }
 
         .heart {
@@ -16,8 +17,6 @@
             color: red;
             font-size: 24px;
             transform: rotate(-45deg);
-            -webkit-transform: rotate(-45deg);
-            -moz-transform: rotate(-45deg);
             cursor: pointer;
         }
     </style>
@@ -26,6 +25,7 @@
     <script>
         var maxX = window.innerWidth;
         var maxY = window.innerHeight;
+        var clicked = false;
 
         function createHeart() {
             var heart = document.createElement('button');
@@ -37,15 +37,19 @@
             document.body.appendChild(heart);
 
             var xPos = Math.random() * maxX;
-            var yPos = -100; // Démarre en dehors de l'écran
-            var speed = 1 + Math.random() * 5; // Vitesse aléatoire
+            var yPos = -100; // Start outside of the screen
+            var speed = 1 + Math.random() * 5; // Random speed
 
             heart.style.left = xPos + 'px';
             heart.style.top = yPos + 'px';
 
             heart.addEventListener('click', function () {
-                // Action à effectuer lors du clic sur le cœur
-                alert('Vous avez cliqué sur le cœur !');
+                // Action to perform when heart is clicked
+                if (!clicked) {
+                    var body = document.querySelector('body');
+                    body.style.backgroundImage = "url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/black%20horse.png?raw=true')";
+                    clicked = true;
+                }
             });
 
             moveHeart(heart, speed);
@@ -59,12 +63,12 @@
                     moveHeart(heart, speed);
                 });
             } else {
-                heart.remove(); // Supprime le cœur une fois qu'il est en bas de la fenêtre
+                heart.remove(); // Remove the heart once it's at the bottom of the window
             }
         }
 
-        // Crée une pluie de cœurs
-        setInterval(createHeart, 200); // Ajoute un cœur toutes les 200 millisecondes
+        // Create a rain of hearts
+        setInterval(createHeart, 200); // Add a heart every 200 milliseconds
     </script>
 </body>
 </html>
