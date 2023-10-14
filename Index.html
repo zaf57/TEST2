@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            background-image: url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/black%20horse.png?raw=true');
+            background-size: cover;
+            background-position: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .heart {
+            position: absolute;
+            color: red;
+            font-size: 24px;
+            transform: rotate(-45deg);
+            -webkit-transform: rotate(-45deg);
+            -moz-transform: rotate(-45deg);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        var maxX = window.innerWidth;
+        var maxY = window.innerHeight;
+
+        function createHeart() {
+            var heart = document.createElement('button');
+            heart.className = 'heart';
+            heart.innerHTML = '💖';
+            heart.style.backgroundColor = 'transparent';
+            heart.style.border = 'none';
+            heart.style.cursor = 'pointer';
+            document.body.appendChild(heart);
+
+            var xPos = Math.random() * maxX;
+            var yPos = -100; // Démarre en dehors de l'écran
+            var speed = 1 + Math.random() * 5; // Vitesse aléatoire
+
+            heart.style.left = xPos + 'px';
+            heart.style.top = yPos + 'px';
+
+            heart.addEventListener('click', function () {
+                // Action à effectuer lors du clic sur le cœur
+                alert('Vous avez cliqué sur le cœur !');
+            });
+
+            moveHeart(heart, speed);
+        }
+
+        function moveHeart(heart, speed) {
+            var yPos = parseInt(heart.style.top);
+            if (yPos < maxY) {
+                heart.style.top = yPos + speed + 'px';
+                requestAnimationFrame(function () {
+                    moveHeart(heart, speed);
+                });
+            } else {
+                heart.remove(); // Supprime le cœur une fois qu'il est en bas de la fenêtre
+            }
+        }
+
+        // Crée une pluie de cœurs
+        setInterval(createHeart, 200); // Ajoute un cœur toutes les 200 millisecondes
+    </script>
+</body>
+</html>
