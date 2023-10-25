@@ -1,89 +1,49 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <style>
-        body {
-            background-image: url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/get%20married.jpg?raw=true');
-            background-size: cover;
-            background-position: center;
-            height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            transition: background-image 0.5s ease-in-out;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .heart {
-            position: absolute;
-            color: red;
-            font-size: 30px;
-            transform: rotate(0deg);
-            cursor: pointer;
-        }
-
-        .message {
-            position: absolute;
-            font-size: 2em;
-            color: white;
-            opacity: 1;
-            transition: opacity 0.5s ease-in-out;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accès à Google Sheets depuis HTML</title>
 </head>
 <body>
-    <div class="message" id="proposal">Benimle evlenir misin ?</div>
+    <input type="text" id="code-pneu" placeholder="Entrez le code-pneu" oninput="getCodePneu()">
+    <p>Hauteur du pneu: <span id="hauteur-pneu"></span></p>
+
+    <script src="https://apis.google.com/js/api.js"></script>
     <script>
-        var maxX = window.innerWidth;
-        var maxY = window.innerHeight;
-        var clicked = false;
-
-        function createHeart() {
-            var heart = document.createElement('button');
-            heart.className = 'heart';
-            //heart.innerHTML = '💖';
-            heart.innerHTML = '🖤';
-            //heart.innerHTML = '❤️';
-            heart.style.backgroundColor = 'transparent';
-            heart.style.border = 'none';
-            heart.style.cursor = 'pointer';
-            document.body.appendChild(heart);
-
-            var xPos = Math.random() * maxX;
-            var yPos = -100; // Start outside of the screen
-            var speed = 1 + Math.random() * 5; // Random speed
-
-            heart.style.left = xPos + 'px';
-            heart.style.top = yPos + 'px';
-
-            heart.addEventListener('click', function () {
-                // Action to perform when heart is clicked
-                if (!clicked) {
-                    var body = document.querySelector('body');
-                    body.style.backgroundImage = "url('https://github.com/zaf57/benimle-evlenir-misin/blob/main/black%20horse.jpg?raw=true')";
-                    document.getElementById('proposal').style.display = 'none';
-                    clicked = true;
-                }
+        function start() {
+            gapi.client.init({
+                'apiKey': 'AIzaSyAIRpStG7VNS7XKpYmxunpO5hIsdZ_9d0E',
+                'discoveryDocs': ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+            }).then(function () {
+                console.log('API initialized');
+            }, function (error) {
+                console.log('Error initializing API', error);
             });
-
-            moveHeart(heart, speed);
         }
-
-        function moveHeart(heart, speed) {
-            var yPos = parseInt(heart.style.top);
-            if (yPos < maxY) {
-                heart.style.top = yPos + speed + 'px';
-                requestAnimationFrame(function () {
-                    moveHeart(heart, speed);
-                });
-            } else {
-                heart.remove(); // Remove the heart once it's at the bottom of the window
-            }
+        function getCodePneu() {
+            var codePneu = document.getElementById('code-pneu').value;
+            gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: '13Vf05H7GPCwWC-odB_EtnaHLWhdNwqWoBpEYrM2eIfA',
+                range: 'Feuille 1!A2:C', // Assurez-vous que le nom de la feuille est correctement saisi
+            }).then(function(response) {
+                var values = response.result.values;
+                var hauteurPneu = '...';
+                if (values && values.length > 0) {
+                    for (var i = 0; i < values.length; i++) {
+                        var row = values[i];
+                        if (row[0] === codePneu) {
+                            hauteurPneu = row[2];
+                            break;
+                        }
+                    }
+                }
+                document.getElementById('hauteur-pneu').innerText = hauteurPneu;
+            }, function(response) {
+                console.log('Erreur : ' + response.result.error.message);
+            });
         }
-
-        // Create a rain of hearts
-        setInterval(createHeart, 200); // Add a heart every 200 milliseconds
+        gapi.load('client', start);
     </script>
 </body>
 </html>
