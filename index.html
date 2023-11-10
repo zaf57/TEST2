@@ -1,49 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accès à Google Sheets depuis HTML</title>
+    <title>Page de connexion</title>
 </head>
 <body>
-    <input type="text" id="code-pneu" placeholder="Entrez le code-pneu" oninput="getCodePneu()">
-    <p>Hauteur du pneu: <span id="hauteur-pneu"></span></p>
-
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script>
-        function start() {
-            gapi.client.init({
-                'apiKey': 'AIzaSyAIRpStG7VNS7XKpYmxunpO5hIsdZ_9d0E',
-                'discoveryDocs': ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
-            }).then(function () {
-                console.log('API initialized');
-            }, function (error) {
-                console.log('Error initializing API', error);
-            });
-        }
-        function getCodePneu() {
-            var codePneu = document.getElementById('code-pneu').value;
-            gapi.client.sheets.spreadsheets.values.get({
-                spreadsheetId: '13Vf05H7GPCwWC-odB_EtnaHLWhdNwqWoBpEYrM2eIfA',
-                range: 'Feuille 1!A2:C', // Assurez-vous que le nom de la feuille est correctement saisi
-            }).then(function(response) {
-                var values = response.result.values;
-                var hauteurPneu = '...';
-                if (values && values.length > 0) {
-                    for (var i = 0; i < values.length; i++) {
-                        var row = values[i];
-                        if (row[0] === codePneu) {
-                            hauteurPneu = row[2];
-                            break;
-                        }
-                    }
-                }
-                document.getElementById('hauteur-pneu').innerText = hauteurPneu;
-            }, function(response) {
-                console.log('Erreur : ' + response.result.error.message);
-            });
-        }
-        gapi.load('client', start);
-    </script>
+    <form action="auth.php" method="post">
+        <label for="username">Nom d'utilisateur :</label><br>
+        <input type="text" id="username" name="username"><br><br>
+        <label for="password">Mot de passe :</label><br>
+        <input type="password" id="password" name="password"><br><br>
+        <input type="submit" value="Se connecter">
+    </form>
 </body>
 </html>
