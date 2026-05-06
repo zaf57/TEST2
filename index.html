@@ -34,11 +34,7 @@
             font-size: 16px;
         }
 
-        .alias {
-            color: #2196F3;
-            font-weight: bold;
-            margin-left: 6px;
-        }
+        
     </style>
 </head>
 <body>
@@ -67,10 +63,7 @@
                     const div = document.createElement('div');
                     div.className = 'machine';
 
-                    div.innerHTML = `
-                        ${code}
-                        <span class="alias">(${alias})</span>
-                    `;
+                    div.innerHTML = `${code}`;
 
                     container.appendChild(div);
                 });
@@ -81,12 +74,3 @@
 
 </body>
 </html>
-```
-
-# Exemples générés automatiquement
-
-* CUA1G → (1/1G)
-* CUA1D → (1/1D)
-* CUB3G → (2/3G)
-* CUC7D → (3/7D)
-* CUZ9G → (26/9G)
