@@ -28,7 +28,7 @@
         html = html.replaceAll(
             code,
             `${code} <span style="
-                color:#2196F3;
+                color:#ff9800;
                 font-weight:bold;
             ">(${traductions[code]})</span>`
         );
