@@ -1,15 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-    <title>Page de connexion</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Test Machines Atelier</title>
+
+<style>
+
+body{
+    font-family: Arial, sans-serif;
+    background:#f4f4f4;
+    padding:40px;
+}
+
+.container{
+    background:white;
+    padding:30px;
+    border-radius:10px;
+    box-shadow:0 0 10px rgba(0,0,0,0.1);
+    max-width:800px;
+}
+
+h1{
+    margin-bottom:30px;
+}
+
+.machine{
+    padding:12px;
+    margin:8px 0;
+    background:#ececec;
+    border-radius:6px;
+    font-size:20px;
+}
+
+.status{
+    float:right;
+    font-weight:bold;
+}
+
+.ok{
+    color:green;
+}
+
+.alarm{
+    color:red;
+}
+
+.warning{
+    color:orange;
+}
+
+</style>
 </head>
+
 <body>
-    <form action="auth.php" method="post">
-        <label for="username">Nom d'utilisateur :</label><br>
-        <input type="text" id="username" name="username"><br><br>
-        <label for="password">Mot de passe :</label><br>
-        <input type="password" id="password" name="password"><br><br>
-        <input type="submit" value="Se connecter">
-    </form>
+
+<div class="container">
+
+    <h1>Supervision Machines</h1>
+
+    <div class="machine">
+        Machine CUA1D
+        <span class="status ok">OK</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA2D
+        <span class="status warning">ATTENTE</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA3D
+        <span class="status alarm">ALARME</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA4D
+        <span class="status ok">OK</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA5G
+        <span class="status ok">OK</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA6G
+        <span class="status warning">MAINTENANCE</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA7G
+        <span class="status ok">OK</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA8G
+        <span class="status alarm">DEFAUT</span>
+    </div>
+
+    <div class="machine">
+        Machine CUA9G
+        <span class="status ok">OK</span>
+    </div>
+
+</div>
+
 </body>
 </html>
