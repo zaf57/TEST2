@@ -1,0 +1,62 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier
+// @match        http*://*/*
+// @match        *://url du site/*
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+
+    'use strict';
+
+    // =========================
+    // TABLE DE CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    // Lettres A -> Z
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+    lettres.forEach((lettre, index) => {
+
+        // Rangée :
+        // A = 1
+        // B = 2
+        // ...
+        // Z = 26
+
+        const rangee = index + 1;
+
+        // Machines 1 -> 9
+        for(let i = 1; i <= 9; i++) {
+
+            // Côté gauche
+            traductions[`CU${lettre}${i}G`] = `${rangee}/${i}G`;
+
+            // Côté droit
+            traductions[`CU${lettre}${i}D`] = `${rangee}/${i}D`;
+        }
+    });
+
+    // =========================
+    // REMPLACEMENT
+    // =========================
+
+    let html = document.body.innerHTML;
+
+    for(const code in traductions) {
+
+        html = html.replaceAll(
+            code,
+            `${code} <span style="
+                color:#2196F3;
+                font-weight:bold;
+            ">(${traductions[code]})</span>`
+        );
+    }
+
+    document.body.innerHTML = html;
+
+})();
