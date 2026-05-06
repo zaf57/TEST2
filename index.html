@@ -1,110 +1,92 @@
+# index.html
+
+```html
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Test Machines Atelier</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Liste Machines Atelier</title>
 
-<style>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            padding: 20px;
+        }
 
-body{
-    font-family: Arial, sans-serif;
-    background:#f4f4f4;
-    padding:40px;
-}
+        h1 {
+            text-align: center;
+        }
 
-.container{
-    background:white;
-    padding:30px;
-    border-radius:10px;
-    box-shadow:0 0 10px rgba(0,0,0,0.1);
-    max-width:800px;
-}
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
 
-h1{
-    margin-bottom:30px;
-}
+        .machine {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            font-size: 16px;
+        }
 
-.machine{
-    padding:12px;
-    margin:8px 0;
-    background:#ececec;
-    border-radius:6px;
-    font-size:20px;
-}
-
-.status{
-    float:right;
-    font-weight:bold;
-}
-
-.ok{
-    color:green;
-}
-
-.alarm{
-    color:red;
-}
-
-.warning{
-    color:orange;
-}
-
-</style>
+        .alias {
+            color: #2196F3;
+            font-weight: bold;
+            margin-left: 6px;
+        }
+    </style>
 </head>
-
 <body>
 
-<div class="container">
+    <h1>Liste Complète des Machines</h1>
 
-    <h1>Supervision Machines</h1>
+    <div class="grid" id="machines"></div>
 
-    <div class="machine">
-        Machine CUA1D
-        <span class="status ok">OK</span>
-    </div>
+    <script>
 
-    <div class="machine">
-        Machine CUA2D
-        <span class="status warning">ATTENTE</span>
-    </div>
+        const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
-    <div class="machine">
-        Machine CUA3D
-        <span class="status alarm">ALARME</span>
-    </div>
+        const container = document.getElementById('machines');
 
-    <div class="machine">
-        Machine CUA4D
-        <span class="status ok">OK</span>
-    </div>
+        lettres.forEach((lettre, index) => {
 
-    <div class="machine">
-        Machine CUA5G
-        <span class="status ok">OK</span>
-    </div>
+            const rangee = index + 1;
 
-    <div class="machine">
-        Machine CUA6G
-        <span class="status warning">MAINTENANCE</span>
-    </div>
+            for(let i = 1; i <= 9; i++) {
 
-    <div class="machine">
-        Machine CUA7G
-        <span class="status ok">OK</span>
-    </div>
+                ['G', 'D'].forEach(cote => {
 
-    <div class="machine">
-        Machine CUA8G
-        <span class="status alarm">DEFAUT</span>
-    </div>
+                    const code = `CU${lettre}${i}${cote}`;
+                    const alias = `${rangee}/${i}${cote}`;
 
-    <div class="machine">
-        Machine CUA9G
-        <span class="status ok">OK</span>
-    </div>
+                    const div = document.createElement('div');
+                    div.className = 'machine';
 
-</div>
+                    div.innerHTML = `
+                        ${code}
+                        <span class="alias">(${alias})</span>
+                    `;
+
+                    container.appendChild(div);
+                });
+            }
+        });
+
+    </script>
 
 </body>
 </html>
+```
+
+# Exemples générés automatiquement
+
+* CUA1G → (1/1G)
+* CUA1D → (1/1D)
+* CUB3G → (2/3G)
+* CUC7D → (3/7D)
+* CUZ9G → (26/9G)
