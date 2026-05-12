@@ -1,0 +1,146 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier
+// @match        *://*/*
+// @grant        unsafeWindow
+// @run-at       document-idle
+// @inject-into  page
+// ==/UserScript==
+
+(function() {
+
+    'use strict';
+
+    // =========================
+    // TABLE CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+    lettres.forEach((lettre, index) => {
+
+        const rangee = index + 1;
+
+        for(let i = 1; i <= 9; i++) {
+
+            traductions[`CU${lettre}${i}G`] = `${rangee}/${i}G`;
+            traductions[`CU${lettre}${i}D`] = `${rangee}/${i}D`;
+        }
+    });
+
+    // =========================
+    // AJOUT TRADUCTION
+    // =========================
+
+    function traiterTexte(node) {
+
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
+
+        if (!node.parentElement) {
+            return;
+        }
+
+        // Evite doublons
+        if (node.parentElement.dataset.machineTraduit) {
+            return;
+        }
+
+        let texte = node.nodeValue;
+        let modifie = false;
+
+        for (const code in traductions) {
+
+            if (texte.includes(code)) {
+
+                modifie = true;
+
+                texte = texte.replaceAll(
+                    code,
+                    `${code}|||${traductions[code]}`
+                );
+            }
+        }
+
+        if (modifie) {
+
+            const span = document.createElement('span');
+
+            const morceaux = texte.split('|||');
+
+            let html = morceaux[0];
+
+            for (let i = 1; i < morceaux.length; i++) {
+
+                html += `
+                    <span style="
+                        background:#ff9800;
+                        color:black;
+                        font-weight:bold;
+                        padding:2px 6px;
+                        border-radius:4px;
+                        margin-left:4px;
+                    ">
+                        (${morceaux[i]})
+                    </span>
+                `;
+            }
+
+            span.innerHTML = html;
+
+            span.dataset.machineTraduit = "1";
+
+            node.parentNode.replaceChild(span, node);
+        }
+    }
+
+    // =========================
+    // SCAN PAGE
+    // =========================
+
+    function scanner(node) {
+
+        if (!node) return;
+
+        if (node.nodeType === Node.TEXT_NODE) {
+
+            traiterTexte(node);
+        }
+
+        else {
+
+            node.childNodes.forEach(scanner);
+        }
+    }
+
+    // =========================
+    // LANCEMENT
+    // =========================
+
+    scanner(document.body);
+
+    // =========================
+    // SURVEILLANCE TEMPS REEL
+    // =========================
+
+    const observer = new MutationObserver((mutations) => {
+
+        mutations.forEach((mutation) => {
+
+            mutation.addedNodes.forEach((node) => {
+
+                scanner(node);
+            });
+        });
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    console.log("TRADUCTION INDUSTRIELLE ACTIVE");
+
+})();
