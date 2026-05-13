@@ -6,12 +6,12 @@
 // @inject-into  page
 // ==/UserScript==
 
-(function() {
+(function () {
 
     'use strict';
 
     // =========================
-    // TABLE CORRESPONDANCE
+    // CORRESPONDANCES
     // =========================
 
     const traductions = {};
@@ -22,7 +22,7 @@
 
         const rangee = index + 1;
 
-        for(let i = 1; i <= 9; i++) {
+        for (let i = 1; i <= 9; i++) {
 
             traductions[`CU${lettre}${i}G`] = `${rangee}/${i}G`;
             traductions[`CU${lettre}${i}D`] = `${rangee}/${i}D`;
@@ -30,51 +30,31 @@
     });
 
     // =========================
-    // AJOUT TRADUCTION
+    // TRAITEMENT
     // =========================
 
-    function traiterTexte(node) {
+    function remplacerDansElement(element) {
 
-        if (!node || node.nodeType !== Node.TEXT_NODE) {
-            return;
-        }
+        if (!element) return;
 
-        if (!node.parentElement) {
-            return;
-        }
+        // Evite retraitement
+        if (element.dataset.traduit) return;
 
-        // Evite doublons
-        if (node.parentElement.dataset.machineTraduit) {
-            return;
-        }
+        let html = element.innerHTML;
 
-        let texte = node.nodeValue;
         let modifie = false;
 
         for (const code in traductions) {
 
-            if (texte.includes(code)) {
+            const regex = new RegExp(`\\b${code}\\b`, 'g');
+
+            if (regex.test(html)) {
 
                 modifie = true;
 
-                texte = texte.replaceAll(
-                    code,
-                    `${code}|||${traductions[code]}`
-                );
-            }
-        }
-
-        if (modifie) {
-
-            const span = document.createElement('span');
-
-            const morceaux = texte.split('|||');
-
-            let html = morceaux[0];
-
-            for (let i = 1; i < morceaux.length; i++) {
-
-                html += `
+                html = html.replace(
+                    regex,
+                    `${code}
                     <span style="
                         background:#ff9800;
                         color:black;
@@ -82,65 +62,40 @@
                         padding:2px 6px;
                         border-radius:4px;
                         margin-left:4px;
+                        display:inline-block;
                     ">
-                        (${morceaux[i]})
-                    </span>
-                `;
+                        (${traductions[code]})
+                    </span>`
+                );
             }
+        }
 
-            span.innerHTML = html;
+        if (modifie) {
 
-            span.dataset.machineTraduit = "1";
-
-            node.parentNode.replaceChild(span, node);
+            element.innerHTML = html;
+            element.dataset.traduit = "1";
         }
     }
 
     // =========================
-    // SCAN PAGE
+    // SCAN COMPLET
     // =========================
 
-    function scanner(node) {
+    function scanner() {
 
-        if (!node) return;
+        const elements = document.querySelectorAll('div, span, td, p, label');
 
-        if (node.nodeType === Node.TEXT_NODE) {
-
-            traiterTexte(node);
-        }
-
-        else {
-
-            node.childNodes.forEach(scanner);
-        }
+        elements.forEach(remplacerDansElement);
     }
 
     // =========================
     // LANCEMENT
     // =========================
 
-    scanner(document.body);
+    setInterval(scanner, 2000);
 
-    // =========================
-    // SURVEILLANCE TEMPS REEL
-    // =========================
+    scanner();
 
-    const observer = new MutationObserver((mutations) => {
-
-        mutations.forEach((mutation) => {
-
-            mutation.addedNodes.forEach((node) => {
-
-                scanner(node);
-            });
-        });
-    });
-
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    console.log("TRADUCTION INDUSTRIELLE ACTIVE");
+    console.log("TRADUCTION ACTIVE");
 
 })();
