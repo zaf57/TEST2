@@ -11,7 +11,7 @@
     'use strict';
 
     // =========================
-    // CORRESPONDANCES
+    // TABLE CORRESPONDANCE
     // =========================
 
     const traductions = {};
@@ -30,71 +30,122 @@
     });
 
     // =========================
-    // TRAITEMENT
+    // TRAITEMENT TEXTE
     // =========================
 
-    function remplacerDansElement(element) {
+    function traiterTextNode(node) {
 
-        if (!element) return;
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
 
-        // Evite retraitement
-        if (element.dataset.traduit) return;
+        const texte = node.nodeValue;
 
-        let html = element.innerHTML;
-
-        let modifie = false;
+        if (!texte) return;
 
         for (const code in traductions) {
 
-            const regex = new RegExp(`\\b${code}\\b`, 'g');
+            if (texte.includes(code)) {
 
-            if (regex.test(html)) {
+                const parent = node.parentNode;
 
-                modifie = true;
+                if (!parent) return;
 
-                html = html.replace(
-                    regex,
-                    `${code}
-                    <span style="
-                        background:#ff9800;
-                        color:black;
-                        font-weight:bold;
-                        padding:2px 6px;
-                        border-radius:4px;
-                        margin-left:4px;
-                        display:inline-block;
-                    ">
-                        (${traductions[code]})
-                    </span>`
-                );
+                // Evite double traduction
+                if (parent.dataset.traduit) return;
+
+                const fragment = document.createDocumentFragment();
+
+                const parties = texte.split(code);
+
+                parties.forEach((partie, index) => {
+
+                    fragment.appendChild(
+                        document.createTextNode(partie)
+                    );
+
+                    if (index < parties.length - 1) {
+
+                        // Texte original
+                        fragment.appendChild(
+                            document.createTextNode(code)
+                        );
+
+                        // Traduction
+                        const badge = document.createElement('span');
+
+                        badge.textContent =
+                            ` (${traductions[code]})`;
+
+                        badge.style.background = '#ff9800';
+                        badge.style.color = 'black';
+                        badge.style.fontWeight = 'bold';
+                        badge.style.padding = '2px 6px';
+                        badge.style.borderRadius = '4px';
+                        badge.style.marginLeft = '4px';
+
+                        fragment.appendChild(badge);
+                    }
+                });
+
+                parent.dataset.traduit = "1";
+
+                parent.replaceChild(fragment, node);
+
+                return;
             }
-        }
-
-        if (modifie) {
-
-            element.innerHTML = html;
-            element.dataset.traduit = "1";
         }
     }
 
     // =========================
-    // SCAN COMPLET
+    // SCAN PAGE
     // =========================
 
-    function scanner() {
+    function scanner(node) {
 
-        const elements = document.querySelectorAll('div, span, td, p, label');
+        if (!node) return;
 
-        elements.forEach(remplacerDansElement);
+        if (node.nodeType === Node.TEXT_NODE) {
+
+            traiterTextNode(node);
+        }
+
+        else {
+
+            node.childNodes.forEach(scanner);
+        }
     }
 
     // =========================
     // LANCEMENT
     // =========================
 
-    setInterval(scanner, 2000);
+    function lancer() {
 
-    scanner();
+        scanner(document.body);
+    }
+
+    lancer();
+
+    // =========================
+    // SURVEILLANCE TEMPS REEL
+    // =========================
+
+    const observer = new MutationObserver((mutations) => {
+
+        mutations.forEach((mutation) => {
+
+            mutation.addedNodes.forEach((node) => {
+
+                scanner(node);
+            });
+        });
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
 
     console.log("TRADUCTION ACTIVE");
 
