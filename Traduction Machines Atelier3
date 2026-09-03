@@ -1,0 +1,274 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier3
+// @match        *://*/*
+// @grant        unsafeWindow
+// @run-at       document-idle
+// @inject-into  page
+// ==/UserScript==
+
+(function () {
+
+    'use strict';
+
+    // =========================
+    // CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    for (let i = 0; i < lettres.length; i++) {
+
+        const lettre = lettres[i];
+        const rangee = i + 1;
+
+        for (let n = 1; n <= 9; n++) {
+
+            traductions[`CU${lettre}${n}G`] = `${rangee}/${n}G`;
+            traductions[`CU${lettre}${n}D`] = `${rangee}/${n}D`;
+
+        }
+    }
+
+    // =========================
+    // SCAN D'UN TEXT NODE
+    // =========================
+
+    function traiterTextNode(node) {
+
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
+
+        const texte = node.nodeValue;
+
+        if (!texte) return;
+
+        const parent = node.parentElement;
+
+        if (!parent) return;
+
+        // Ne pas toucher aux zones sensibles
+        const tag = parent.tagName;
+
+        if (
+            tag === 'SCRIPT' ||
+            tag === 'STYLE' ||
+            tag === 'NOSCRIPT' ||
+            tag === 'TEXTAREA' ||
+            tag === 'INPUT'
+        ) {
+            return;
+        }
+
+        // On ne cherche que la PREMIÈRE occurrence : le nœud est ensuite
+        // découpé et le reste est traité récursivement (voir plus bas).
+        const regex = /CU[A-Z][1-9][GD]/;
+        const match = regex.exec(texte);
+
+        if (!match) return;
+
+        const code = match[0];
+        const traduction = traductions[code];
+
+        if (!traduction) return;
+
+        const finCode = match.index + code.length;
+        const codeEnFinDeNoeud = finCode === texte.length;
+
+        if (codeEnFinDeNoeud) {
+
+            // Si le code est en toute fin de nœud, il peut s'agir d'un
+            // nœud déjà découpé lors d'un passage précédent : on vérifie
+            // que la traduction n'est pas déjà présente juste après.
+            const suivant = node.nextSibling;
+
+            const dejaTraduit =
+                suivant &&
+                suivant.nodeType === Node.ELEMENT_NODE &&
+                suivant.getAttribute &&
+                suivant.getAttribute('data-traduction-machine') === code;
+
+            if (dejaTraduit) {
+                return;
+            }
+        }
+
+        // =========================
+        // DÉCOUPAGE ET AJOUT DE LA TRADUCTION
+        // =========================
+
+        // Sépare le nœud juste après le code trouvé : "node" garde le
+        // texte jusqu'au code inclus, "reste" récupère la suite.
+        const reste = node.splitText(finCode);
+
+        const span = document.createElement('span');
+
+        span.textContent = ` (${traduction})`;
+
+        span.style.color = 'orange';
+        span.style.fontWeight = 'bold';
+
+        span.setAttribute(
+            'data-traduction-machine',
+            code
+        );
+
+        node.parentNode.insertBefore(span, reste);
+
+        // Traite immédiatement le reste du texte : si plusieurs codes
+        // partagent le même nœud d'origine, ils sont tous traduits en
+        // une seule passe, dans l'ordre, sans attendre le prochain scan.
+        traiterTextNode(reste);
+    }
+
+    // =========================
+    // SCAN
+    // =========================
+
+    function scanner(element) {
+
+        if (!element) return;
+
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT
+        );
+
+        const nodes = [];
+
+        let node;
+
+        while ((node = walker.nextNode())) {
+            nodes.push(node);
+        }
+
+        nodes.forEach(traiterTextNode);
+    }
+
+    // =========================
+    // LANCEMENT
+    // =========================
+
+    function lancer() {
+
+        if (!document.body) return;
+
+        scanner(document.body);
+    }
+
+    lancer();
+
+    // =========================
+    // MUTATION OBSERVER
+    // =========================
+
+    const observer = new MutationObserver(
+        function (mutations) {
+
+            mutations.forEach(function (mutation) {
+
+                mutation.addedNodes.forEach(function (node) {
+
+                    if (
+                        node.nodeType === Node.ELEMENT_NODE
+                    ) {
+
+                        if (
+                            !node.hasAttribute(
+                                'data-traduction-machine'
+                            )
+                        ) {
+                            scanner(node);
+                        }
+                    }
+
+                    else if (
+                        node.nodeType === Node.TEXT_NODE
+                    ) {
+                        traiterTextNode(node);
+                    }
+
+                });
+
+            });
+
+        }
+    );
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // =========================
+    // SURVEILLANCE NAVIGATION
+    // =========================
+
+    const ancienPushState =
+        history.pushState;
+
+    history.pushState = function () {
+
+        const resultat =
+            ancienPushState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    const ancienReplaceState =
+        history.replaceState;
+
+    history.replaceState = function () {
+
+        const resultat =
+            ancienReplaceState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    window.addEventListener(
+        'popstate',
+        function () {
+
+            setTimeout(lancer, 300);
+            setTimeout(lancer, 1000);
+            setTimeout(lancer, 2000);
+
+        }
+    );
+
+    // =========================
+    // FILET DE SÉCURITÉ
+    // =========================
+
+    // Certaines applications changent de page
+    // sans utiliser correctement l'API History.
+    // On rescane donc périodiquement.
+
+    setInterval(function () {
+
+        lancer();
+
+    }, 3000);
+
+    console.log(
+        '[Traduction Machines Atelier2] ACTIVE'
+    );
+
+})();
