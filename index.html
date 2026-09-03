@@ -35,6 +35,7 @@ button.primary{background:#1677d2;color:white;border:0;border-radius:7px;padding
 button.secondary{background:white;border:1px solid #cbd3da;border-radius:7px;padding:11px 20px;cursor:pointer}
 .log{font-family:monospace;background:#10161c;color:#b9d0df;border-radius:8px;padding:14px;font-size:12px;line-height:1.8}
 .ok{color:#72e18b}
+.warn{color:#e1b672}
 
 .machine-search{position:relative;max-width:650px}
 .machine-search input{width:100%;padding:13px 15px;border:1px solid #cbd3da;border-radius:7px;font-size:15px;outline:none}
@@ -91,7 +92,8 @@ button.secondary{background:white;border:1px solid #cbd3da;border-radius:7px;pad
   <div class="card">
     <h2>Journal de test</h2>
     <div class="log"><span class="ok">✓</span> Page 1 chargée<br>
-    <span class="ok">✓</span> Les codes CUA1G, CUB3D, CUC5G et CUZ9D doivent être traduits automatiquement.</div>
+    <span class="ok">✓</span> Les codes CUA1G, CUB3D, CUC5G et CUZ9D doivent être traduits automatiquement.<br>
+    <span class="warn">⚠</span> Cas limite : un seul nœud contient deux codes → CUG3G puis CUH8D dans la même phrase (vérifie le comportement "un seul code traduit par passage").</div>
   </div>
 
   <div class="actions">
@@ -153,16 +155,18 @@ window.addEventListener('popstate', ()=>{
 const initialPage = location.hash === '#page2' ? 'page2' : 'page1';
 goTo(initialPage, false);
 
-const machines = [
-  "CUA1G","CUA1D","CUA2G","CUA2D","CUA3G","CUA3D",
-  "CUB1G","CUB1D","CUB2G","CUB2D","CUB3G","CUB3D",
-  "CUC1G","CUC1D","CUC5G","CUC5D",
-  "CUD1G","CUD1D","CUD2G","CUD2D","CUD7G","CUD7D",
-  "CUE1G","CUE1D","CUE7G","CUE7D",
-  "CUF4G","CUF4D","CUF8G","CUF8D",
-  "CUG3G","CUG3D","CUH8G","CUH8D",
-  "CUZ9G","CUZ9D"
-];
+// Liste générée par boucle complète (26 lettres x 1-9 x G/D = 468 codes)
+// pour tester l'autocomplétion sur l'intégralité de la plage de codes possibles.
+const machines = [];
+{
+  const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (let i = 0; i < lettres.length; i++) {
+    for (let n = 1; n <= 9; n++) {
+      machines.push(`CU${lettres[i]}${n}G`);
+      machines.push(`CU${lettres[i]}${n}D`);
+    }
+  }
+}
 
 const machineInput = document.getElementById("machineInput");
 const suggestions = document.getElementById("suggestions");
@@ -221,5 +225,6 @@ document.addEventListener("click", event => {
 });
 
 </script>
+
 </body>
 </html>
