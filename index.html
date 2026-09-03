@@ -1,4 +1,4 @@
-html = r'''<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -35,6 +35,15 @@ button.primary{background:#1677d2;color:white;border:0;border-radius:7px;padding
 button.secondary{background:white;border:1px solid #cbd3da;border-radius:7px;padding:11px 20px;cursor:pointer}
 .log{font-family:monospace;background:#10161c;color:#b9d0df;border-radius:8px;padding:14px;font-size:12px;line-height:1.8}
 .ok{color:#72e18b}
+
+.machine-search{position:relative;max-width:650px}
+.machine-search input{width:100%;padding:13px 15px;border:1px solid #cbd3da;border-radius:7px;font-size:15px;outline:none}
+.machine-search input:focus{border-color:#1677d2;box-shadow:0 0 0 3px #1677d21a}
+.suggestions{position:absolute;z-index:20;left:0;right:0;top:100%;background:white;border:1px solid #dfe4e8;border-top:0;border-radius:0 0 7px 7px;box-shadow:0 6px 16px #00000012;display:none;overflow:hidden}
+.suggestion{padding:11px 15px;cursor:pointer;font-family:monospace;font-weight:700}
+.suggestion:hover,.suggestion.active{background:#eef3f7}
+.no-result{padding:11px 15px;color:#89939d;font-size:13px}
+.selected-machine{margin-top:12px;font-size:13px;color:#697580}
 </style>
 </head>
 <body>
@@ -60,6 +69,16 @@ button.secondary{background:white;border:1px solid #cbd3da;border-radius:7px;pad
   <div class="breadcrumb">Atelier 2 / Workflow / Contrôle</div>
   <h1>Contrôle des machines</h1>
   <div class="subtitle">Page 1 — codes machines à traduire</div>
+
+  <div class="card">
+    <h2>Rechercher une machine</h2>
+    <div class="machine-search">
+      <input id="machineInput" type="text" autocomplete="off"
+             placeholder="Commencer à taper un code, ex. CU...">
+      <div id="suggestions" class="suggestions"></div>
+    </div>
+    <div id="selectedMachine" class="selected-machine"></div>
+  </div>
 
   <div class="card">
     <h2>Machines détectées</h2>
@@ -133,16 +152,74 @@ window.addEventListener('popstate', ()=>{
 
 const initialPage = location.hash === '#page2' ? 'page2' : 'page1';
 goTo(initialPage, false);
+
+const machines = [
+  "CUA1G","CUA1D","CUA2G","CUA2D","CUA3G","CUA3D",
+  "CUB1G","CUB1D","CUB2G","CUB2D","CUB3G","CUB3D",
+  "CUC1G","CUC1D","CUC5G","CUC5D",
+  "CUD1G","CUD1D","CUD2G","CUD2D","CUD7G","CUD7D",
+  "CUE1G","CUE1D","CUE7G","CUE7D",
+  "CUF4G","CUF4D","CUF8G","CUF8D",
+  "CUG3G","CUG3D","CUH8G","CUH8D",
+  "CUZ9G","CUZ9D"
+];
+
+const machineInput = document.getElementById("machineInput");
+const suggestions = document.getElementById("suggestions");
+const selectedMachine = document.getElementById("selectedMachine");
+
+function afficherSuggestions() {
+  const valeur = machineInput.value.trim().toUpperCase();
+
+  if (!valeur) {
+    suggestions.style.display = "none";
+    return;
+  }
+
+  const resultats = machines
+    .filter(code => code.startsWith(valeur))
+    .slice(0, 10);
+
+  suggestions.innerHTML = "";
+
+  if (!resultats.length) {
+    suggestions.innerHTML = '<div class="no-result">Aucune machine trouvée</div>';
+  } else {
+    resultats.forEach(code => {
+      const item = document.createElement("div");
+      item.className = "suggestion";
+      item.textContent = code;
+      item.onclick = () => {
+        machineInput.value = code;
+        selectedMachine.textContent = "Machine sélectionnée : " + code;
+        suggestions.style.display = "none";
+      };
+      suggestions.appendChild(item);
+    });
+  }
+
+  suggestions.style.display = "block";
+}
+
+machineInput.addEventListener("input", afficherSuggestions);
+
+machineInput.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    suggestions.style.display = "none";
+  }
+
+  if (event.key === "Enter") {
+    const premier = suggestions.querySelector(".suggestion");
+    if (premier) premier.click();
+  }
+});
+
+document.addEventListener("click", event => {
+  if (!event.target.closest(".machine-search")) {
+    suggestions.style.display = "none";
+  }
+});
+
 </script>
 </body>
 </html>
-'''
-
-(out / "index.html").write_text(html, encoding="utf-8")
-
-zip_path = Path("/mnt/data/test_workflow_traduction.zip")
-with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
-    z.write(out / "index.html", "index.html")
-
-print(f"Fichier créé : {out/'index.html'}")
-print(f"ZIP créé : {zip_path}")
