@@ -1,0 +1,271 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier2
+// @match        *://*/*
+// @grant        unsafeWindow
+// @run-at       document-idle
+// @inject-into  page
+// ==/UserScript==
+
+(function () {
+
+    'use strict';
+
+    // =========================
+    // CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    for (let i = 0; i < lettres.length; i++) {
+
+        const lettre = lettres[i];
+        const rangee = i + 1;
+
+        for (let n = 1; n <= 9; n++) {
+
+            traductions[`CU${lettre}${n}G`] = `${rangee}/${n}G`;
+            traductions[`CU${lettre}${n}D`] = `${rangee}/${n}D`;
+
+        }
+    }
+
+    // =========================
+    // SCAN D'UN TEXT NODE
+    // =========================
+
+    function traiterTextNode(node) {
+
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
+
+        const texte = node.nodeValue;
+
+        if (!texte) return;
+
+        const regex = /CU[A-Z][1-9][GD]/g;
+
+        if (!regex.test(texte)) {
+            return;
+        }
+
+        regex.lastIndex = 0;
+
+        let match;
+
+        while ((match = regex.exec(texte)) !== null) {
+
+            const code = match[0];
+            const traduction = traductions[code];
+
+            if (!traduction) continue;
+
+            const parent = node.parentElement;
+
+            if (!parent) return;
+
+            // Ne pas toucher aux zones sensibles
+            const tag = parent.tagName;
+
+            if (
+                tag === 'SCRIPT' ||
+                tag === 'STYLE' ||
+                tag === 'NOSCRIPT' ||
+                tag === 'TEXTAREA' ||
+                tag === 'INPUT'
+            ) {
+                return;
+            }
+
+            // Vérifie si cette traduction existe déjà
+            const dejaTraduit = Array.from(
+                parent.childNodes
+            ).some(child =>
+                child.nodeType === Node.ELEMENT_NODE &&
+                child.getAttribute('data-traduction-machine') === code
+            );
+
+            if (dejaTraduit) {
+                continue;
+            }
+
+            // =========================
+            // AJOUT DE LA TRADUCTION
+            // =========================
+
+            const span = document.createElement('span');
+
+            span.textContent = ` (${traduction})`;
+
+            span.style.color = 'orange';
+            span.style.fontWeight = 'bold';
+
+            span.setAttribute(
+                'data-traduction-machine',
+                code
+            );
+
+            // Ajout juste après le texte
+            if (node.parentNode) {
+
+                node.parentNode.insertBefore(
+                    span,
+                    node.nextSibling
+                );
+            }
+
+            return;
+        }
+    }
+
+    // =========================
+    // SCAN
+    // =========================
+
+    function scanner(element) {
+
+        if (!element) return;
+
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT
+        );
+
+        const nodes = [];
+
+        let node;
+
+        while ((node = walker.nextNode())) {
+            nodes.push(node);
+        }
+
+        nodes.forEach(traiterTextNode);
+    }
+
+    // =========================
+    // LANCEMENT
+    // =========================
+
+    function lancer() {
+
+        if (!document.body) return;
+
+        scanner(document.body);
+    }
+
+    lancer();
+
+    // =========================
+    // MUTATION OBSERVER
+    // =========================
+
+    const observer = new MutationObserver(
+        function (mutations) {
+
+            mutations.forEach(function (mutation) {
+
+                mutation.addedNodes.forEach(function (node) {
+
+                    if (
+                        node.nodeType === Node.ELEMENT_NODE
+                    ) {
+
+                        if (
+                            !node.hasAttribute(
+                                'data-traduction-machine'
+                            )
+                        ) {
+                            scanner(node);
+                        }
+                    }
+
+                    else if (
+                        node.nodeType === Node.TEXT_NODE
+                    ) {
+                        traiterTextNode(node);
+                    }
+
+                });
+
+            });
+
+        }
+    );
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // =========================
+    // SURVEILLANCE NAVIGATION
+    // =========================
+
+    const ancienPushState =
+        history.pushState;
+
+    history.pushState = function () {
+
+        const resultat =
+            ancienPushState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    const ancienReplaceState =
+        history.replaceState;
+
+    history.replaceState = function () {
+
+        const resultat =
+            ancienReplaceState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    window.addEventListener(
+        'popstate',
+        function () {
+
+            setTimeout(lancer, 300);
+            setTimeout(lancer, 1000);
+            setTimeout(lancer, 2000);
+
+        }
+    );
+
+    // =========================
+    // FILET DE SÉCURITÉ
+    // =========================
+
+    // Certaines applications changent de page
+    // sans utiliser correctement l'API History.
+    // On rescane donc périodiquement.
+
+    setInterval(function () {
+
+        lancer();
+
+    }, 3000);
+
+    console.log(
+        '[Traduction Machines Atelier2] ACTIVE'
+    );
+
+})();
