@@ -10,6 +10,53 @@
 
     'use strict';
 
+     // =========================
+    // ADRESSES OÙ LE SCRIPT EST DÉSACTIVÉ
+    // =========================
+
+    const adressesExclues = [
+
+        // URL exacte
+        'https://example.com/',
+
+        // Domaine entier
+        'http://sgsrv67.tiretech.contiwan.com',
+        'https://sgtmsrv41.tiremes.contiwan.com',
+
+        // Mot présent dans l'URL
+        '/admin/',
+
+        // Autre exemple
+        'example.org'
+
+    ];
+
+    function estAdresseExclue() {
+
+        const url = window.location.href;
+
+        return adressesExclues.some(function (adresse) {
+
+            return url.includes(adresse);
+
+        });
+
+    }
+
+    // Si l'adresse actuelle est exclue,
+    // on arrête complètement le script.
+    if (estAdresseExclue()) {
+
+        console.log(
+            '[Traduction Machines Atelier3] DÉSACTIVÉ sur cette adresse :',
+            window.location.href
+        );
+
+        return;
+    }
+
+
+
     // =========================
     // CORRESPONDANCE
     // =========================
