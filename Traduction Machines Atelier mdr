@@ -1,0 +1,1296 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier mdr
+// @match        *://*/*
+// @grant        unsafeWindow
+// @run-at       document-idle
+// @inject-into  page
+// ==/UserScript==
+
+(function () {
+
+    'use strict';
+
+    // =========================
+    // CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    for (let i = 0; i < lettres.length; i++) {
+
+        const lettre = lettres[i];
+        const rangee = i + 1;
+
+        for (let n = 1; n <= 9; n++) {
+
+            traductions[`CU${lettre}${n}G`] = `${rangee}/${n}G`;
+            traductions[`CU${lettre}${n}D`] = `${rangee}/${n}D`;
+
+        }
+    }
+
+    // =========================
+    // STYLE DES BULLES
+    // =========================
+
+    const style = document.createElement('style');
+
+    style.textContent = `
+        .tm-inline {
+            display: inline-block;
+            margin-left: 7px;
+            padding: 1px 8px;
+            border-radius: 999px;
+            background: rgba(12, 12, 16, 0.82);
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.35),
+                0 0 10px rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+            line-height: 1.4;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .tm-inline .tm-texte {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 0.85em;
+            background: linear-gradient(
+                90deg,
+                #ff5f6d, #ffc371, #f9f871,
+                #6dffb5, #5ad1ff, #a78bfa,
+                #ff5f6d
+            );
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: tm-couleurs 2.4s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes tm-couleurs {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+        }
+
+        @keyframes tm-vibration {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            20%      { transform: translate(-2px, 1px) rotate(-5deg); }
+            40%      { transform: translate(2px, -1px) rotate(5deg); }
+            60%      { transform: translate(-2px, 1px) rotate(-4deg); }
+            80%      { transform: translate(2px, -1px) rotate(4deg); }
+        }
+
+        .tm-inline.tm-vibre {
+            animation: tm-vibration 0.45s ease-in-out;
+        }
+
+        .tm-inline.tm-detachee {
+            margin: 0;
+            transition: transform 1.3s cubic-bezier(.4, 0, .6, 1);
+        }
+
+        .tm-inline.tm-saisie {
+            cursor: grabbing;
+            box-shadow:
+                0 6px 18px rgba(0, 0, 0, 0.5),
+                0 0 14px rgba(255, 255, 255, 0.08);
+        }
+
+        .tm-corbeille {
+            position: fixed;
+            bottom: 0;
+            right: 40px;
+            z-index: 2147483646;
+            pointer-events: none;
+            text-align: center;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.35));
+            animation: tm-corbeille-tombe 0.85s cubic-bezier(.22,.61,.36,1) forwards;
+        }
+
+        @keyframes tm-corbeille-tombe {
+            0%   { transform: translateY(-130vh); }
+            60%  { transform: translateY(0); }
+            75%  { transform: translateY(-16px); }
+            88%  { transform: translateY(5px); }
+            100% { transform: translateY(0); }
+        }
+
+        .tm-corbeille-score {
+            margin-top: -4px;
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 14px;
+            color: #ff6b1a;
+            background: rgba(255,255,255,0.9);
+            border-radius: 999px;
+            padding: 2px 12px;
+            display: inline-block;
+        }
+
+        .tm-corbeille.tm-corbeille-flash .tm-corbeille-corps {
+            fill: #4a5058;
+        }
+
+        @keyframes tm-score-popup {
+            0%   { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-30px); opacity: 0; }
+        }
+
+        .tm-score-plus1 {
+            position: fixed;
+            z-index: 2147483647;
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            font-size: 16px;
+            color: #ff6b1a;
+            pointer-events: none;
+            animation: tm-score-popup 0.8s ease-out forwards;
+        }
+
+        .tm-message-victoire {
+            position: fixed;
+            top: 42%;
+            left: 50%;
+            z-index: 2147483647;
+            background: rgba(12, 12, 16, 0.94);
+            padding: 38px 48px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 90vw;
+            box-shadow: 0 14px 50px rgba(0, 0, 0, 0.55);
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.4);
+            animation: tm-message-apparition 0.5s cubic-bezier(.34,1.56,.64,1) forwards;
+        }
+
+        .tm-message-victoire .tm-message-ligne,
+        .tm-message-victoire .tm-message-nombre {
+            display: block;
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(
+                90deg,
+                #ff5f6d, #ffc371, #f9f871,
+                #6dffb5, #5ad1ff, #a78bfa,
+                #ff5f6d
+            );
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: tm-couleurs 2.4s linear infinite;
+        }
+
+        .tm-message-victoire .tm-message-ligne {
+            font-weight: 700;
+            font-size: 36px;
+            line-height: 1.35;
+        }
+
+        .tm-message-victoire .tm-message-nombre {
+            font-weight: 900;
+            font-size: 78px;
+            line-height: 1.1;
+            margin: 6px 0;
+        }
+
+        @keyframes tm-message-apparition {
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .tm-message-victoire.tm-message-disparait {
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.7);
+        }
+
+        .tm-message-alerte {
+            position: fixed;
+            top: 42%;
+            left: 50%;
+            z-index: 2147483647;
+            background: rgba(110, 8, 8, 0.95);
+            padding: 34px 54px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow:
+                0 14px 50px rgba(0, 0, 0, 0.6),
+                0 0 45px rgba(255, 40, 40, 0.55);
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.4);
+            animation: tm-alerte-apparition 0.3s ease-out forwards;
+        }
+
+        .tm-message-alerte .tm-message-alerte-texte {
+            font-family: 'Courier New', monospace;
+            font-weight: 900;
+            font-size: 48px;
+            letter-spacing: 5px;
+            color: #ffffff;
+            text-shadow: 0 0 14px rgba(255, 70, 70, 0.9);
+            animation: tm-alerte-clignote 0.4s steps(1, end) infinite;
+        }
+
+        @keyframes tm-alerte-apparition {
+            to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes tm-alerte-clignote {
+            0%, 49%   { opacity: 1; }
+            50%, 100% { opacity: 0.3; }
+        }
+
+        .tm-message-alerte.tm-message-disparait {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.7);
+        }
+    `;
+
+    document.head.appendChild(style);
+
+    // =========================
+    // SUIVI GLOBAL DES BULLES
+    // =========================
+
+    // Recense toutes les bulles créées, pour pouvoir déclencher leur
+    // chute collective et savoir quand elles sont toutes posées au sol.
+    const toutesLesBulles = [];
+
+    // Codes déjà mis au panier : on ne les retraduit jamais plus, même si
+    // le même texte réapparaît ailleurs sur la page (ou est rescanné par
+    // le filet de sécurité périodique).
+    const codesDejaMarques = new Set();
+
+    let score = 0;
+    let corbeille = null;
+    let corbeilleAffichee = false;
+    let messageVictoire = null;
+    let messageAlerte = null;
+    let seuilVictoireAtteint = false;
+    let seuilAlerteAtteint = false;
+    let seuilDisparitionAtteint = false;
+
+    // Une fois passé à true (au 12e point), plus aucune bulle n'est créée
+    // et le script cesse toute activité : impossible de recommencer.
+    let jeuTermine = false;
+    let idIntervalleFiletSecurite = null;
+    let observerMutations = null;
+
+    const SEUIL_VICTOIRE = 10;
+    const SEUIL_ALERTE = 11;
+    const SEUIL_DISPARITION = 12;
+
+    // =========================
+    // CORBEILLE (cible pour le lancer, apparaît une fois tout tombé)
+    // =========================
+
+    function afficherCorbeille() {
+
+        if (corbeilleAffichee) return;
+        corbeilleAffichee = true;
+
+        corbeille = document.createElement('div');
+        corbeille.className = 'tm-corbeille';
+        corbeille.innerHTML = `
+            <svg width="130" height="115" viewBox="0 0 130 115">
+                <rect x="8" y="6" width="114" height="16" rx="4" fill="#4a5058" stroke="#1c1f24" stroke-width="3"/>
+                <path class="tm-corbeille-corps" d="M18,22 L112,22 L98,110 L32,110 Z" fill="#3a3f47" stroke="#1c1f24" stroke-width="3"/>
+                <line x1="42" y1="30" x2="48" y2="102" stroke="#585e66" stroke-width="2"/>
+                <line x1="65" y1="30" x2="65" y2="102" stroke="#585e66" stroke-width="2"/>
+                <line x1="88" y1="30" x2="82" y2="102" stroke="#585e66" stroke-width="2"/>
+            </svg>
+            <div class="tm-corbeille-score">Score : <span id="tm-score-valeur">${score}</span></div>
+        `;
+
+        document.body.appendChild(corbeille);
+    }
+
+    function marquerPoint(x, y) {
+
+        score += 1;
+
+        const valeur = corbeille && corbeille.querySelector('#tm-score-valeur');
+        if (valeur) valeur.textContent = String(score);
+
+        if (corbeille) {
+            corbeille.classList.add('tm-corbeille-flash');
+            setTimeout(function () {
+                if (corbeille) corbeille.classList.remove('tm-corbeille-flash');
+            }, 300);
+        }
+
+        jouerSonScore();
+
+        const popup = document.createElement('div');
+        popup.className = 'tm-score-plus1';
+        popup.textContent = '+1';
+        popup.style.left = x + 'px';
+        popup.style.top = y + 'px';
+        document.body.appendChild(popup);
+
+        setTimeout(function () {
+            popup.remove();
+        }, 850);
+
+        if (!seuilVictoireAtteint && score >= SEUIL_VICTOIRE) {
+            seuilVictoireAtteint = true;
+            afficherMessageVictoire();
+        }
+
+        if (!seuilAlerteAtteint && score === SEUIL_ALERTE) {
+            seuilAlerteAtteint = true;
+            afficherMessageAlerte();
+        }
+
+        if (!seuilDisparitionAtteint && score === SEUIL_DISPARITION) {
+            seuilDisparitionAtteint = true;
+            toutFaireDisparaitre();
+        }
+    }
+
+    // Zone d'ouverture de la corbeille en coordonnées écran, pour la
+    // détection de passage pendant le lancer physique. Absente tant que
+    // la corbeille n'est pas encore apparue.
+    function zoneCorbeille() {
+
+        if (!corbeille) return null;
+
+        const rectCorbeille = corbeille.getBoundingClientRect();
+
+        return {
+            xMin: rectCorbeille.left + 18,
+            xMax: rectCorbeille.left + 112,
+            yMin: rectCorbeille.top + 18,
+            yMax: rectCorbeille.top + 34
+        };
+    }
+
+    // Déclenche la chute de TOUTES les bulles présentes dès qu'on en
+    // touche une seule, et fait apparaître la corbeille immédiatement
+    // (léger décalage aléatoire entre les bulles pour un effet de
+    // cascade plutôt qu'une chute parfaitement synchronisée).
+    function declencherChuteGlobale() {
+
+        afficherCorbeille();
+
+        toutesLesBulles.forEach(function (b) {
+
+            if (b._tmEstTombee || b._tmSaisie || b._tmEnChute) return;
+
+            b._tmEnChute = true;
+            const delai = Math.random() * 400;
+
+            setTimeout(function () {
+                if (b._tmSaisie) {
+                    b._tmEnChute = false;
+                    return;
+                }
+                declencherChuteManuelle(b);
+            }, delai);
+        });
+    }
+
+    // =========================
+    // DÉTACHEMENT ET CHUTE
+    // =========================
+
+    function detacherEtTomber(bulle) {
+
+        // Position actuelle exacte, avant de sortir du flux normal du texte
+        const rect = bulle.getBoundingClientRect();
+
+        bulle.style.position = 'fixed';
+        bulle.style.left = rect.left + 'px';
+        bulle.style.top = rect.top + 'px';
+        bulle.style.zIndex = '2147483647';
+
+        // Force le navigateur à appliquer cette position avant la transition,
+        // pour que la chute parte bien de l'emplacement d'origine
+        void bulle.offsetWidth;
+
+        bulle.classList.add('tm-detachee');
+
+        const margeBasse = 16 + Math.random() * 50;
+
+        // Dérive latérale limitée autour de la position d'origine, pour
+        // une chute presque verticale plutôt qu'un déplacement vers un
+        // point aléatoire sur toute la largeur de l'écran.
+        const derive = (Math.random() * 90) - 45;
+        let xAtterrissage = rect.left + derive;
+        xAtterrissage = Math.min(
+            Math.max(xAtterrissage, 10),
+            window.innerWidth - rect.width - 10
+        );
+
+        const rotation = (Math.random() * 50) - 25;
+
+        const deltaX = xAtterrissage - rect.left;
+        const deltaY = (window.innerHeight - margeBasse - rect.height) - rect.top;
+
+        bulle.style.transform =
+            `translate(${deltaX}px, ${deltaY}px) rotate(${rotation}deg)`;
+
+        // Marque la bulle comme posée une fois la chute terminée
+        const surFinTransition = function (e) {
+            if (e.target !== bulle || e.propertyName !== 'transform') return;
+            bulle.removeEventListener('transitionend', surFinTransition);
+            bulle._tmEstTombee = true;
+            bulle._tmEnChute = false;
+        };
+
+        bulle.addEventListener('transitionend', surFinTransition);
+
+        // Elle reste posée en bas de l'écran une fois la chute terminée
+    }
+
+    // =========================
+    // (La chute automatique par minuteur a été retirée : une bulle ne
+    // tombe désormais que si on la touche — voir declencherChuteManuelle)
+    // =========================
+
+    // =========================
+    // SON DE LANCER
+    // =========================
+
+    let contexteAudio = null;
+
+    function jouerSonLancer() {
+
+        try {
+
+            if (!contexteAudio) {
+                contexteAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const osc = contexteAudio.createOscillator();
+            const gain = contexteAudio.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(760, contexteAudio.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(360, contexteAudio.currentTime + 0.12);
+
+            gain.gain.setValueAtTime(0.16, contexteAudio.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, contexteAudio.currentTime + 0.16);
+
+            osc.connect(gain);
+            gain.connect(contexteAudio.destination);
+
+            osc.start();
+            osc.stop(contexteAudio.currentTime + 0.16);
+
+        } catch (e) {
+            // Audio indisponible (bloqué par le navigateur, etc.) : on ignore
+        }
+    }
+
+    function jouerSonScore() {
+
+        try {
+
+            if (!contexteAudio) {
+                contexteAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Petit arpège ascendant (do-mi-sol), distinct du son de lancer
+            const notes = [523.25, 659.25, 783.99];
+
+            notes.forEach(function (frequence, i) {
+
+                const osc = contexteAudio.createOscillator();
+                const gain = contexteAudio.createGain();
+                const debut = contexteAudio.currentTime + (i * 0.07);
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(frequence, debut);
+
+                gain.gain.setValueAtTime(0.15, debut);
+                gain.gain.exponentialRampToValueAtTime(0.001, debut + 0.18);
+
+                osc.connect(gain);
+                gain.connect(contexteAudio.destination);
+
+                osc.start(debut);
+                osc.stop(debut + 0.18);
+            });
+
+        } catch (e) {
+            // Audio indisponible : on ignore
+        }
+    }
+
+    function jouerSonVictoire() {
+
+        try {
+
+            if (!contexteAudio) {
+                contexteAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Petite fanfare montante (do-mi-sol-do octave-mi octave),
+            // plus longue et festive que le son de score.
+            const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+
+            notes.forEach(function (frequence, i) {
+
+                const osc = contexteAudio.createOscillator();
+                const gain = contexteAudio.createGain();
+                const debut = contexteAudio.currentTime + (i * 0.11);
+                const derniere = i === notes.length - 1;
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(frequence, debut);
+
+                gain.gain.setValueAtTime(0.16, debut);
+                gain.gain.exponentialRampToValueAtTime(
+                    0.001,
+                    debut + (derniere ? 0.55 : 0.2)
+                );
+
+                osc.connect(gain);
+                gain.connect(contexteAudio.destination);
+
+                osc.start(debut);
+                osc.stop(debut + (derniere ? 0.55 : 0.2));
+            });
+
+        } catch (e) {
+            // Audio indisponible : on ignore
+        }
+    }
+
+    function jouerSonAlerte() {
+
+        try {
+
+            if (!contexteAudio) {
+                contexteAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // Sirène deux tons (façon alerte), plus abrupte que les autres sons
+            const freqHaute = 880;
+            const freqBasse = 550;
+            const dureeParPalier = 0.16;
+            const nbPaliers = 4;
+
+            for (let i = 0; i < nbPaliers; i++) {
+
+                const osc = contexteAudio.createOscillator();
+                const gain = contexteAudio.createGain();
+                const debut = contexteAudio.currentTime + (i * dureeParPalier);
+                const frequence = (i % 2 === 0) ? freqHaute : freqBasse;
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(frequence, debut);
+
+                gain.gain.setValueAtTime(0.11, debut);
+                gain.gain.exponentialRampToValueAtTime(0.001, debut + dureeParPalier);
+
+                osc.connect(gain);
+                gain.connect(contexteAudio.destination);
+
+                osc.start(debut);
+                osc.stop(debut + dureeParPalier);
+            }
+
+        } catch (e) {
+            // Audio indisponible : on ignore
+        }
+    }
+
+    // =========================
+    // CHUTE MANUELLE (déclenchée par un simple clic sur la bulle)
+    // =========================
+
+    function declencherChuteManuelle(bulle) {
+
+        bulle.classList.add('tm-vibre');
+
+        bulle._tmTimeoutChute = setTimeout(function () {
+            bulle.classList.remove('tm-vibre');
+            if (!bulle._tmSaisie) {
+                detacherEtTomber(bulle);
+            }
+        }, 450);
+    }
+
+    // =========================
+    // DISPARITION (une fois le score marqué)
+    // =========================
+
+    function disparaitreBulle(bulle, angle) {
+
+        const code = bulle.getAttribute('data-traduction-machine');
+        if (code) {
+            codesDejaMarques.add(code);
+        }
+
+        bulle.style.transition = 'transform 0.35s ease-in, opacity 0.35s ease-in';
+        bulle.style.transform = `rotate(${angle}deg) scale(0.15)`;
+        bulle.style.opacity = '0';
+
+        setTimeout(function () {
+
+            bulle.remove();
+
+            const index = toutesLesBulles.indexOf(bulle);
+            if (index !== -1) {
+                toutesLesBulles.splice(index, 1);
+            }
+
+        }, 360);
+    }
+
+    // =========================
+    // MESSAGE FINAL (déclenché au score de 10)
+    // =========================
+
+    function afficherMessageVictoire() {
+
+        if (messageVictoire) return;
+
+        const lignes = [
+            { texte: "RIEN D'AUTRE A FOUTRE?", classe: 'tm-message-ligne' },
+            { texte: 'VA CHANGER', classe: 'tm-message-ligne' },
+            { texte: '10', classe: 'tm-message-nombre' },
+            { texte: 'MOULES PLUTOT!', classe: 'tm-message-ligne' }
+        ];
+
+        messageVictoire = document.createElement('div');
+        messageVictoire.className = 'tm-message-victoire';
+
+        lignes.forEach(function (ligne) {
+            const element = document.createElement('span');
+            element.className = ligne.classe;
+            element.textContent = ligne.texte;
+            messageVictoire.appendChild(element);
+        });
+
+        document.body.appendChild(messageVictoire);
+
+        jouerSonVictoire();
+
+        messageVictoire._tmTimeoutDisparition = setTimeout(function () {
+
+            if (!messageVictoire) return;
+
+            messageVictoire.classList.add('tm-message-disparait');
+
+            setTimeout(function () {
+                masquerMessageVictoire();
+            }, 500);
+
+        }, 4500);
+    }
+
+    function masquerMessageVictoire() {
+
+        if (!messageVictoire) return;
+
+        clearTimeout(messageVictoire._tmTimeoutDisparition);
+        messageVictoire.remove();
+        messageVictoire = null;
+    }
+
+    // =========================
+    // MESSAGE D'ALERTE (déclenché au score de 11)
+    // =========================
+
+    function afficherMessageAlerte() {
+
+        if (messageAlerte) return;
+
+        messageAlerte = document.createElement('div');
+        messageAlerte.className = 'tm-message-alerte';
+
+        const texte = document.createElement('span');
+        texte.className = 'tm-message-alerte-texte';
+        texte.textContent = 'STOP.';
+
+        messageAlerte.appendChild(texte);
+        document.body.appendChild(messageAlerte);
+
+        jouerSonAlerte();
+
+        messageAlerte._tmTimeoutDisparition = setTimeout(function () {
+
+            if (!messageAlerte) return;
+
+            messageAlerte.classList.add('tm-message-disparait');
+
+            setTimeout(function () {
+                masquerMessageAlerte();
+            }, 400);
+
+        }, 2200);
+    }
+
+    function masquerMessageAlerte() {
+
+        if (!messageAlerte) return;
+
+        clearTimeout(messageAlerte._tmTimeoutDisparition);
+        messageAlerte.remove();
+        messageAlerte = null;
+    }
+
+    // =========================
+    // DISPARITION TOTALE (déclenchée au score de 12)
+    // =========================
+
+    function toutFaireDisparaitre() {
+
+        jeuTermine = true;
+
+        const elements = toutesLesBulles.slice();
+        if (corbeille) elements.push(corbeille);
+
+        elements.forEach(function (el) {
+
+            // Arrête toute animation en cours (lancer, chute programmée)
+            if (el._tmAnimationLancer) {
+                cancelAnimationFrame(el._tmAnimationLancer);
+                el._tmAnimationLancer = null;
+            }
+            clearTimeout(el._tmTimeoutChute);
+
+            el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            el.style.opacity = '0';
+        });
+
+        setTimeout(function () {
+            elements.forEach(function (el) {
+                el.remove();
+            });
+        }, 520);
+
+        masquerMessageVictoire();
+        masquerMessageAlerte();
+
+        document.querySelectorAll('.tm-score-plus1').forEach(function (popup) {
+            popup.remove();
+        });
+
+        toutesLesBulles.length = 0;
+
+        // Arrêt définitif : plus aucun scan, plus aucune nouvelle
+        // traduction, impossible de recommencer une partie.
+        if (observerMutations) {
+            observerMutations.disconnect();
+        }
+
+        if (idIntervalleFiletSecurite) {
+            clearInterval(idIntervalleFiletSecurite);
+        }
+
+        console.log(
+            '[Traduction Machines Atelier2] ARRÊT DÉFINITIF (score de 12 atteint)'
+        );
+    }
+
+    // =========================
+    // LANCER AVEC PHYSIQUE (gravité, frottement, rebonds)
+    // =========================
+
+    function lancerBulle(bulle, vxParMs, vyParMs) {
+
+        let vx = vxParMs * 1000; // px/s
+        let vy = vyParMs * 1000;
+        let angle = 0;
+        let aMarque = false;
+
+        const gravite = 2200;       // px/s²
+        const frottementAir = 0.999;
+        const rebond = 0.42;
+        const frottementSol = 0.85;
+
+        let dernierT = performance.now();
+
+        function etape(tActuel) {
+
+            if (bulle._tmSaisie) {
+                // Re-saisie en plein vol : on arrête la simulation
+                bulle._tmAnimationLancer = null;
+                return;
+            }
+
+            const dt = Math.min((tActuel - dernierT) / 1000, 0.032);
+            dernierT = tActuel;
+
+            vy += gravite * dt;
+            vx *= frottementAir;
+            angle += vx * dt * 0.4;
+
+            const rect = bulle.getBoundingClientRect();
+            const largeur = rect.width;
+            const hauteur = rect.height;
+
+            let x = parseFloat(bulle.style.left) + vx * dt;
+            let y = parseFloat(bulle.style.top) + vy * dt;
+
+            // Passage dans la corbeille : centre de la bulle dans la zone
+            // de son ouverture, en descendant, une seule fois par lancer.
+            // (Pas de vérification tant que la corbeille n'est pas encore
+            // apparue.)
+            if (!aMarque && vy > 0) {
+
+                const zone = zoneCorbeille();
+
+                if (zone) {
+
+                    const centreX = x + (largeur / 2);
+                    const centreY = y + (hauteur / 2);
+
+                    if (
+                        centreX >= zone.xMin && centreX <= zone.xMax &&
+                        centreY >= zone.yMin && centreY <= zone.yMax
+                    ) {
+                        aMarque = true;
+
+                        bulle.style.left = x + 'px';
+                        bulle.style.top = y + 'px';
+
+                        marquerPoint(centreX, centreY);
+                        disparaitreBulle(bulle, angle);
+
+                        bulle._tmAnimationLancer = null;
+                        return;
+                    }
+                }
+            }
+
+            // Rebond sur les bords gauche/droit de l'écran
+            if (x < 0) {
+                x = 0;
+                vx = -vx * rebond;
+            } else if (x + largeur > window.innerWidth) {
+                x = window.innerWidth - largeur;
+                vx = -vx * rebond;
+            }
+
+            // Rebond / pose au sol
+            const solY = window.innerHeight - hauteur;
+
+            if (y >= solY) {
+                y = solY;
+                vy = -vy * rebond;
+                vx *= frottementSol;
+
+                if (Math.abs(vy) < 40 && Math.abs(vx) < 15) {
+                    bulle.style.left = x + 'px';
+                    bulle.style.top = y + 'px';
+                    bulle.style.transform = `rotate(${angle}deg)`;
+                    bulle._tmAnimationLancer = null;
+                    bulle._tmEstTombee = true;
+                    bulle._tmEnChute = false;
+                    return;
+                }
+            }
+
+            bulle.style.left = x + 'px';
+            bulle.style.top = y + 'px';
+            bulle.style.transform = `rotate(${angle}deg)`;
+
+            bulle._tmAnimationLancer = requestAnimationFrame(etape);
+        }
+
+        bulle._tmAnimationLancer = requestAnimationFrame(etape);
+    }
+
+    // =========================
+    // GLISSER-DÉPOSER À LA SOURIS
+    // =========================
+
+    function figerPositionCourante(bulle) {
+
+        // Si une chute est en cours, on capture la position visuelle
+        // exacte à cet instant (transform interpolé compris) pour éviter
+        // tout saut au moment de la saisie.
+        const transformActuel = getComputedStyle(bulle).transform;
+
+        bulle.style.transition = 'none';
+        bulle.style.transform = transformActuel === 'none' ? '' : transformActuel;
+
+        const rect = bulle.getBoundingClientRect();
+
+        bulle.style.position = 'fixed';
+        bulle.style.left = rect.left + 'px';
+        bulle.style.top = rect.top + 'px';
+        bulle.style.zIndex = '2147483647';
+        bulle.style.transform = 'none';
+        bulle.style.margin = '0';
+    }
+
+    function rendreDeplacable(bulle) {
+
+        let decalageX = 0;
+        let decalageY = 0;
+        let historique = [];
+        let xDepart = 0;
+        let yDepart = 0;
+        let distanceMax = 0;
+
+        function surMouseMove(e) {
+
+            bulle.style.left = (e.clientX - decalageX) + 'px';
+            bulle.style.top = (e.clientY - decalageY) + 'px';
+
+            const distance = Math.hypot(e.clientX - xDepart, e.clientY - yDepart);
+            if (distance > distanceMax) distanceMax = distance;
+
+            historique.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+
+            if (historique.length > 5) {
+                historique.shift();
+            }
+        }
+
+        function surMouseUp() {
+
+            bulle._tmSaisie = false;
+            bulle.classList.remove('tm-saisie');
+            document.removeEventListener('mousemove', surMouseMove);
+            document.removeEventListener('mouseup', surMouseUp);
+
+            // Simple clic (quasiment aucun déplacement) : toutes les
+            // bulles présentes tombent, comme si on avait "touché" le tas.
+            if (distanceMax < 6) {
+                declencherChuteGlobale();
+                return;
+            }
+
+            // Vitesse de relâchement calculée sur les dernières positions
+            // enregistrées : au-delà d'un certain seuil, on lance la bulle
+            // (avec son, uniquement dans ce cas).
+            let vx = 0;
+            let vy = 0;
+
+            if (historique.length >= 2) {
+
+                const recent = historique[historique.length - 1];
+                const ancien = historique[0];
+                const dt = recent.t - ancien.t;
+
+                if (dt > 0) {
+                    vx = (recent.x - ancien.x) / dt;
+                    vy = (recent.y - ancien.y) / dt;
+                }
+            }
+
+            historique = [];
+
+            const vitesse = Math.sqrt((vx * vx) + (vy * vy));
+
+            if (vitesse > 0.05) {
+                jouerSonLancer();
+                lancerBulle(bulle, vx, vy);
+            }
+            // Sinon : glissée puis relâchée sans élan, elle reste posée là.
+        }
+
+        bulle.addEventListener('mousedown', function (e) {
+
+            e.preventDefault();
+
+            // Annule toute chute programmée, ou un lancer en cours
+            clearTimeout(bulle._tmTimeoutChute);
+
+            if (bulle._tmAnimationLancer) {
+                cancelAnimationFrame(bulle._tmAnimationLancer);
+                bulle._tmAnimationLancer = null;
+            }
+
+            bulle.classList.remove('tm-vibre');
+
+            figerPositionCourante(bulle);
+
+            const rectActuel = bulle.getBoundingClientRect();
+            decalageX = e.clientX - rectActuel.left;
+            decalageY = e.clientY - rectActuel.top;
+
+            xDepart = e.clientX;
+            yDepart = e.clientY;
+            distanceMax = 0;
+
+            historique = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+
+            bulle._tmSaisie = true;
+            bulle.classList.add('tm-saisie', 'tm-detachee');
+
+            document.addEventListener('mousemove', surMouseMove);
+            document.addEventListener('mouseup', surMouseUp);
+        });
+    }
+
+    // =========================
+    // SCAN D'UN TEXT NODE
+    // =========================
+
+    function traiterTextNode(node) {
+
+        if (jeuTermine) return;
+
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
+
+        const texte = node.nodeValue;
+
+        if (!texte) return;
+
+        const parent = node.parentElement;
+
+        if (!parent) return;
+
+        // Ne pas toucher aux zones sensibles
+        const tag = parent.tagName;
+
+        if (
+            tag === 'SCRIPT' ||
+            tag === 'STYLE' ||
+            tag === 'NOSCRIPT' ||
+            tag === 'TEXTAREA' ||
+            tag === 'INPUT'
+        ) {
+            return;
+        }
+
+        // On ne cherche que la PREMIÈRE occurrence : le nœud est ensuite
+        // découpé et le reste est traité récursivement (voir plus bas).
+        const regex = /CU[A-Z][1-9][GD]/;
+        const match = regex.exec(texte);
+
+        if (!match) return;
+
+        const code = match[0];
+        const traduction = traductions[code];
+
+        if (!traduction) return;
+
+        const finCode = match.index + code.length;
+        const codeEnFinDeNoeud = finCode === texte.length;
+
+        if (codeEnFinDeNoeud) {
+
+            // Si le code est en toute fin de nœud, il peut s'agir d'un
+            // nœud déjà découpé lors d'un passage précédent : on vérifie
+            // que la traduction n'est pas déjà présente juste après.
+            const suivant = node.nextSibling;
+
+            const dejaTraduit =
+                suivant &&
+                suivant.nodeType === Node.ELEMENT_NODE &&
+                suivant.getAttribute &&
+                suivant.getAttribute('data-traduction-machine') === code;
+
+            if (dejaTraduit) {
+                return;
+            }
+        }
+
+        // Ce code a déjà été mis au panier : on ne le retraduit jamais
+        // plus (même après un nouveau passage du filet de sécurité), on
+        // passe simplement par-dessus et on continue sur le reste.
+        if (codesDejaMarques.has(code)) {
+
+            const resteApresCodeMarque = node.splitText(finCode);
+            traiterTextNode(resteApresCodeMarque);
+            return;
+        }
+
+        // =========================
+        // DÉCOUPAGE ET AJOUT DE LA TRADUCTION
+        // =========================
+
+        // Sépare le nœud juste après le code trouvé : "node" garde le
+        // texte jusqu'au code inclus, "reste" récupère la suite.
+        const reste = node.splitText(finCode);
+
+        const span = document.createElement('span');
+        span.className = 'tm-inline';
+
+        const texteInterne = document.createElement('span');
+        texteInterne.className = 'tm-texte';
+        texteInterne.textContent = `(${traduction})`;
+
+        span.appendChild(texteInterne);
+
+        span.setAttribute(
+            'data-traduction-machine',
+            code
+        );
+
+        node.parentNode.insertBefore(span, reste);
+
+        toutesLesBulles.push(span);
+        rendreDeplacable(span);
+
+        // Une nouvelle bulle apparaît : si un message de victoire d'une
+        // précédente partie était encore affiché, on le retire.
+        masquerMessageVictoire();
+
+        // La bulle reste posée à sa place naturelle indéfiniment. Dès
+        // qu'on touche (clique) une bulle quelconque, toutes celles
+        // présentes tombent (declencherChuteGlobale, via rendreDeplacable).
+
+        // Traite immédiatement le reste du texte : si plusieurs codes
+        // partagent le même nœud d'origine, ils sont tous traduits en
+        // une seule passe, dans l'ordre, sans attendre le prochain scan.
+        traiterTextNode(reste);
+    }
+
+    // =========================
+    // SCAN
+    // =========================
+
+    function scanner(element) {
+
+        if (!element) return;
+
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT
+        );
+
+        const nodes = [];
+
+        let node;
+
+        while ((node = walker.nextNode())) {
+            nodes.push(node);
+        }
+
+        nodes.forEach(traiterTextNode);
+    }
+
+    // =========================
+    // LANCEMENT
+    // =========================
+
+    function lancer() {
+
+        if (!document.body) return;
+
+        scanner(document.body);
+    }
+
+    lancer();
+
+    // =========================
+    // MUTATION OBSERVER
+    // =========================
+
+    observerMutations = new MutationObserver(
+        function (mutations) {
+
+            mutations.forEach(function (mutation) {
+
+                mutation.addedNodes.forEach(function (node) {
+
+                    if (
+                        node.nodeType === Node.ELEMENT_NODE
+                    ) {
+
+                        if (
+                            !node.hasAttribute(
+                                'data-traduction-machine'
+                            )
+                        ) {
+                            scanner(node);
+                        }
+                    }
+
+                    else if (
+                        node.nodeType === Node.TEXT_NODE
+                    ) {
+                        traiterTextNode(node);
+                    }
+
+                });
+
+            });
+
+        }
+    );
+
+    observerMutations.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // =========================
+    // SURVEILLANCE NAVIGATION
+    // =========================
+
+    const ancienPushState =
+        history.pushState;
+
+    history.pushState = function () {
+
+        const resultat =
+            ancienPushState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    const ancienReplaceState =
+        history.replaceState;
+
+    history.replaceState = function () {
+
+        const resultat =
+            ancienReplaceState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    window.addEventListener(
+        'popstate',
+        function () {
+
+            setTimeout(lancer, 300);
+            setTimeout(lancer, 1000);
+            setTimeout(lancer, 2000);
+
+        }
+    );
+
+    // =========================
+    // FILET DE SÉCURITÉ
+    // =========================
+
+    // Certaines applications changent de page
+    // sans utiliser correctement l'API History.
+    // On rescane donc périodiquement.
+
+    idIntervalleFiletSecurite = setInterval(function () {
+
+        lancer();
+
+    }, 3000);
+
+    console.log(
+        '[Traduction Machines Atelier2] ACTIVE'
+    );
+
+})();
