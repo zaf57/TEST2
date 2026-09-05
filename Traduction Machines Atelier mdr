@@ -283,9 +283,9 @@
     let idIntervalleFiletSecurite = null;
     let observerMutations = null;
 
-    const SEUIL_VICTOIRE = 10;
-    const SEUIL_ALERTE = 11;
-    const SEUIL_DISPARITION = 12;
+    const SEUIL_VICTOIRE = 8;
+    const SEUIL_ALERTE = 9;
+    const SEUIL_DISPARITION = 10;
 
     // =========================
     // CORBEILLE (cible pour le lancer, apparaît une fois tout tombé)
