@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Traduction Machines Atelier3
+// @name         Traduction Machines Atelier_V3
 // @match        *://*/*
 // @grant        unsafeWindow
 // @run-at       document-idle
