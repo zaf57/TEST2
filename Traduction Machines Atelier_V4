@@ -5,6 +5,7 @@
 // @run-at       document-idle
 // @inject-into  page
 // ==/UserScript==
+// action: remplace nom machines
 
 (function () {
 
