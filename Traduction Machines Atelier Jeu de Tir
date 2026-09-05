@@ -1,0 +1,1573 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier Jeu de Tir
+// @match        *://*/*
+// @grant        unsafeWindow
+// @run-at       document-idle
+// @inject-into  page
+// ==/UserScript==
+
+(function () {
+
+    'use strict';
+
+    // =========================
+    // ADRESSES OÙ LE SCRIPT EST DÉSACTIVÉ
+    // =========================
+
+    const adressesExclues = [
+
+        // URL exacte
+        'https://example.com/',
+
+        // Domaine entier
+        'http://sgsrv67.tiretech.contiwan.com',
+        'https://sgtmsrv41.tiremes.contiwan.com',
+
+        // Mot présent dans l'URL
+        '/admin/',
+
+        // Autre exemple
+        'example.org'
+
+    ];
+
+    function estAdresseExclue() {
+
+        const url = window.location.href;
+
+        return adressesExclues.some(function (adresse) {
+
+            return url.includes(adresse);
+
+        });
+
+    }
+
+    // Si l'adresse actuelle est exclue,
+    // on arrête complètement le script.
+    if (estAdresseExclue()) {
+
+        console.log(
+            '[Traduction Machines Atelier3 Jeu de Tir] DÉSACTIVÉ sur cette adresse :',
+            window.location.href
+        );
+
+        return;
+    }
+
+    // =========================
+    // CORRESPONDANCE
+    // =========================
+
+    const traductions = {};
+
+    const lettres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    for (let i = 0; i < lettres.length; i++) {
+
+        const lettre = lettres[i];
+        const rangee = i + 1;
+
+        for (let n = 1; n <= 9; n++) {
+
+            traductions[`CU${lettre}${n}G`] = `${rangee}/${n}G`;
+            traductions[`CU${lettre}${n}D`] = `${rangee}/${n}D`;
+
+        }
+    }
+
+    // =========================
+    // ÉTAT DU JEU DE TIR
+    // =========================
+
+    let jeuOuvert = false;
+    let styleJeuInjecte = false;
+    let motsRusseTombes = [];
+
+    // =========================
+    // STYLE DU JEU (injecté une seule fois, à la première ouverture)
+    // =========================
+
+    function injecterStyleJeu() {
+
+        if (styleJeuInjecte) return;
+        styleJeuInjecte = true;
+
+        const style = document.createElement('style');
+
+        style.textContent = `
+            #jt-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 2147483647;
+                background: transparent;
+                font-family: 'Courier New', monospace;
+            }
+
+            #jt-arene {
+                position: relative;
+                width: 100%;
+                height: 100%;
+                cursor: none;
+            }
+
+            #jt-hud {
+                position: fixed;
+                bottom: 15px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #ffffff;
+                color: #141c24;
+                font-size: 15px;
+                font-weight: 700;
+                display: flex;
+                gap: 20px;
+                letter-spacing: 0.5px;
+                padding: 8px 18px;
+                border-radius: 10px;
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+                white-space: nowrap;
+            }
+
+            #jt-hud .jt-valeur {
+                color: #ff5b5b;
+            }
+
+            #jt-fermer {
+                position: fixed;
+                top: 14px;
+                right: 18px;
+                font-family: inherit;
+                font-size: 18px;
+                font-weight: 700;
+                background: rgba(20, 20, 24, 0.55);
+                color: #ff5b5b;
+                border: 1px solid rgba(255, 91, 91, 0.6);
+                border-radius: 8px;
+                width: 34px;
+                height: 34px;
+                cursor: pointer;
+            }
+
+            #jt-fermer:hover {
+                background: rgba(255, 91, 91, 0.3);
+            }
+
+            .jt-crosshair {
+                position: fixed;
+                width: 34px;
+                height: 34px;
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+            }
+
+            .jt-joueur {
+                position: absolute;
+                bottom: 60px;
+                left: 50%;
+                transform: translateX(-50%);
+                pointer-events: none;
+            }
+
+            .jt-ennemi {
+                position: absolute;
+            }
+
+            .jt-bras {
+                transform-box: fill-box;
+                transform-origin: center;
+            }
+
+            #jt-bras-joueur {
+                transition: transform 0.05s linear;
+            }
+
+            .jt-bras-ennemi {
+                transform-box: fill-box;
+                transform-origin: 0% 50%;
+            }
+
+            @keyframes jt-apparait {
+                from { transform: scale(0.3); opacity: 0; }
+                to   { transform: scale(1); opacity: 1; }
+            }
+
+            .jt-apparition {
+                animation: jt-apparait 0.22s ease-out;
+            }
+
+            #jt-ecran-fin {
+                position: fixed;
+                inset: 0;
+                background: rgba(8, 10, 14, 0.93);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                color: #fff;
+                text-align: center;
+                gap: 16px;
+                padding: 20px;
+            }
+
+            #jt-ecran-fin h1 {
+                font-size: 34px;
+                color: #ff5b5b;
+                letter-spacing: 1px;
+                line-height: 1.4;
+                max-width: 80vw;
+            }
+
+            .jt-bouton {
+                font-family: inherit;
+                font-size: 16px;
+                font-weight: 700;
+                background: #ff5b5b;
+                color: #141c24;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 30px;
+                cursor: pointer;
+                margin-top: 8px;
+            }
+
+            .jt-bouton:hover {
+                background: #ff7a7a;
+            }
+
+            #jt-ecran-warzone {
+                position: fixed;
+                inset: 0;
+                background: rgba(8, 10, 14, 0.93);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            #jt-titre-warzone {
+                font-family: 'Courier New', monospace;
+                font-size: 64px;
+                font-weight: 900;
+                letter-spacing: 8px;
+                color: #ff5b5b;
+                text-shadow: 0 0 20px rgba(255, 91, 91, 0.6), 0 0 4px rgba(0,0,0,0.9);
+            }
+
+            #jt-compte-a-rebours {
+                font-family: 'Courier New', monospace;
+                font-size: 90px;
+                font-weight: 900;
+                color: #fff6d0;
+                text-shadow: 0 0 16px rgba(255, 180, 60, 0.7);
+            }
+
+            /* Bombes Armageddon */
+
+            .am-boule-feu {
+                position: fixed;
+                z-index: 2147483647;
+                border-radius: 50%;
+                background: radial-gradient(circle at 35% 35%, #fff6d0, #ffb347 40%, #ff5b1a 70%, #b3260a 100%);
+                box-shadow: 0 0 14px 4px rgba(255, 120, 20, 0.7);
+                pointer-events: none;
+            }
+
+            .am-boule-feu::after {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 30%;
+                height: 320%;
+                background: linear-gradient(to top, rgba(255, 180, 60, 0.75), transparent);
+                transform: translate(-50%, -100%);
+                transform-origin: bottom center;
+            }
+
+            .am-explosion {
+                position: fixed;
+                z-index: 2147483647;
+                border-radius: 50%;
+                pointer-events: none;
+                background: radial-gradient(circle, #fff6d0, #ffb347 40%, #ff5b1a 70%, transparent 100%);
+                transform: translate(-50%, -50%) scale(0);
+                animation: am-explosion-anim 0.55s ease-out forwards;
+            }
+
+            @keyframes am-explosion-anim {
+                0%   { transform: translate(-50%, -50%) scale(0);  opacity: 1;   }
+                55%  { transform: translate(-50%, -50%) scale(13); opacity: 0.85; }
+                100% { transform: translate(-50%, -50%) scale(20); opacity: 0;   }
+            }
+
+            .am-mot-cible {
+                display: inline-block;
+            }
+
+            /* Transformation du texte en "russe" avant l'ouverture du jeu */
+
+            .wz-mot-russe {
+                display: inline-block;
+                transition: color 0.6s ease;
+            }
+
+            .wz-mot-russe.wz-transforme {
+                color: #cc1122;
+                font-weight: 700;
+            }
+
+            @keyframes wz-vibration {
+                0%, 100% { transform: translate(0, 0) rotate(0deg); }
+                20%      { transform: translate(-1px, 0.5px) rotate(-2.5deg); }
+                40%      { transform: translate(1px, -0.5px) rotate(2.5deg); }
+                60%      { transform: translate(-1px, 0.5px) rotate(-2deg); }
+                80%      { transform: translate(1px, -0.5px) rotate(2deg); }
+            }
+
+            .wz-mot-russe.wz-vibre {
+                animation: wz-vibration 0.9s ease-in-out;
+            }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    // =========================
+    // TRANSFORMATION DU TEXTE EN "RUSSE" (avant l'ouverture du jeu)
+    // =========================
+
+    function genererMotRusse(longueur) {
+
+        const lettres = 'абвгдежзийклмнопрстуфхцчшщэюя';
+        let mot = '';
+
+        for (let i = 0; i < longueur; i++) {
+            mot += lettres[Math.floor(Math.random() * lettres.length)];
+        }
+
+        return mot;
+    }
+
+    function transformerEnRusse(texteOriginal) {
+
+        return texteOriginal.replace(/[A-Za-zÀ-ÿ]+/g, function (mot) {
+            return genererMotRusse(mot.length);
+        });
+    }
+
+    function estZoneProtegeeTransformation(element) {
+        return element.closest(
+            '.wz-mot-russe, [data-traduction-machine], #jt-overlay'
+        ) !== null;
+    }
+
+    function detacherMotRusseEtTomber(span, surTermine) {
+
+        const rect = span.getBoundingClientRect();
+
+        if (rect.width === 0 && rect.height === 0) {
+            span.remove();
+            surTermine();
+            return;
+        }
+
+        span.style.position = 'fixed';
+        span.style.left = rect.left + 'px';
+        span.style.top = rect.top + 'px';
+        span.style.margin = '0';
+        span.style.zIndex = '2147483000';
+        span.style.pointerEvents = 'none';
+
+        void span.offsetWidth;
+
+        span.style.transition = 'transform 2.2s ease-out';
+
+        const derive = (Math.random() * 160) - 80;
+        const rotation = (Math.random() * 30) - 15;
+        const margeBasse = 3; // presque toutes au même niveau, façon fondation
+
+        const deltaY = (window.innerHeight - margeBasse - rect.height) - rect.top;
+
+        span.style.transform = `translate(${derive}px, ${deltaY}px) rotate(${rotation}deg)`;
+
+        // Le mot reste posé en bas de l'écran (forme une base) plutôt que
+        // de disparaître ; nettoyé plus tard à la fermeture du jeu.
+        motsRusseTombes.push(span);
+
+        setTimeout(function () {
+            surTermine();
+        }, 2250);
+    }
+
+    function lancerTransformationTexteRusse(callback) {
+
+        const marcheur = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        const noeuds = [];
+        let noeud;
+
+        while ((noeud = marcheur.nextNode())) {
+            noeuds.push(noeud);
+        }
+
+        const tousLesSpans = [];
+
+        noeuds.forEach(function (noeudTexte) {
+
+            const texte = noeudTexte.nodeValue;
+            if (!texte || !texte.trim()) return;
+
+            const parent = noeudTexte.parentElement;
+            if (!parent) return;
+
+            const tag = parent.tagName;
+            if (
+                tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' ||
+                tag === 'TEXTAREA' || tag === 'INPUT'
+            ) {
+                return;
+            }
+
+            if (estZoneProtegeeTransformation(parent)) return;
+
+            const morceaux = texte.split(/(\s+)/);
+            const fragment = document.createDocumentFragment();
+
+            morceaux.forEach(function (morceau) {
+
+                if (!morceau) return;
+
+                if (/^\s+$/.test(morceau)) {
+                    fragment.appendChild(document.createTextNode(morceau));
+                    return;
+                }
+
+                const span = document.createElement('span');
+                span.className = 'wz-mot-russe';
+                span.textContent = morceau;
+                fragment.appendChild(span);
+                tousLesSpans.push({ span: span, original: morceau });
+            });
+
+            noeudTexte.parentNode.replaceChild(fragment, noeudTexte);
+        });
+
+        const totalMots = tousLesSpans.length;
+
+        if (totalMots === 0) {
+            callback();
+            return;
+        }
+
+        let motsTermines = 0;
+        let callbackAppele = false;
+
+        function verifierFin() {
+            if (callbackAppele) return;
+            motsTermines += 1;
+            if (motsTermines >= totalMots) {
+                callbackAppele = true;
+                callback();
+            }
+        }
+
+        tousLesSpans.forEach(function (entree) {
+
+            const delai = Math.random() * 1400;
+
+            setTimeout(function () {
+
+                entree.span.textContent = transformerEnRusse(entree.original);
+                entree.span.classList.add('wz-transforme', 'wz-vibre');
+
+                setTimeout(function () {
+
+                    entree.span.classList.remove('wz-vibre');
+
+                    detacherMotRusseEtTomber(entree.span, verifierFin);
+
+                }, 900);
+
+            }, delai);
+        });
+
+        // Sécurité : si un cas limite empêche un mot de se terminer
+        // proprement, on lance quand même le jeu après un délai maximum.
+        setTimeout(function () {
+            if (!callbackAppele) {
+                callbackAppele = true;
+                callback();
+            }
+        }, 6200);
+    }
+
+    // =========================
+    // CONSTRUCTION ET LOGIQUE DU JEU
+    // =========================
+
+    function ouvrirJeuDeTir() {
+
+        if (jeuOuvert) return;
+        jeuOuvert = true;
+
+        injecterStyleJeu();
+
+        lancerTransformationTexteRusse(function () {
+            construireEtLancerJeu();
+        });
+    }
+
+    function construireEtLancerJeu() {
+
+        const overlay = document.createElement('div');
+        overlay.id = 'jt-overlay';
+
+        overlay.innerHTML = `
+            <div id="jt-arene"></div>
+
+            <div id="jt-hud">
+                <div>💀 <span class="jt-valeur" id="jt-valeur-score">0</span></div>
+                <div>❤️ <span class="jt-valeur" id="jt-valeur-vies">5</span></div>
+            </div>
+
+            <button id="jt-fermer" title="Fermer">✕</button>
+
+            <svg class="jt-crosshair" id="jt-crosshair" viewBox="0 0 34 34">
+                <circle cx="17" cy="17" r="12" fill="none" stroke="#ff5b5b" stroke-width="2"/>
+                <line x1="17" y1="0" x2="17" y2="8" stroke="#ff5b5b" stroke-width="2"/>
+                <line x1="17" y1="26" x2="17" y2="34" stroke="#ff5b5b" stroke-width="2"/>
+                <line x1="0" y1="17" x2="8" y2="17" stroke="#ff5b5b" stroke-width="2"/>
+                <line x1="26" y1="17" x2="34" y2="17" stroke="#ff5b5b" stroke-width="2"/>
+            </svg>
+
+            <div id="jt-ecran-warzone">
+                <div id="jt-titre-warzone">WARZONE</div>
+                <div id="jt-compte-a-rebours">3</div>
+            </div>
+
+            <div id="jt-ecran-fin" style="display:none;">
+                <h1>NUL! IL EST L'HEURE D'ALLER BOSSER.</h1>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // =========================
+        // RÉFÉRENCES SCOPÉES À CET OVERLAY
+        // =========================
+
+        const arene = overlay.querySelector('#jt-arene');
+        const crosshair = overlay.querySelector('#jt-crosshair');
+        const elScore = overlay.querySelector('#jt-valeur-score');
+        const elVies = overlay.querySelector('#jt-valeur-vies');
+        const ecranFin = overlay.querySelector('#jt-ecran-fin');
+        const ecranWarzone = overlay.querySelector('#jt-ecran-warzone');
+        const compteARebours = overlay.querySelector('#jt-compte-a-rebours');
+        const boutonFermer = overlay.querySelector('#jt-fermer');
+
+        let score = 0;
+        let vies = 5;
+        let jeuActif = false;
+        let ennemisActifs = [];
+        let idProchainEnnemi = null;
+
+        function creerJoueur() {
+
+            const div = document.createElement('div');
+            div.className = 'jt-joueur';
+
+            div.innerHTML = `
+                <svg width="46" height="80" viewBox="0 0 40 70">
+                    <circle cx="20" cy="10" r="8" fill="#e63946"/>
+                    <rect x="14" y="18" width="12" height="26" rx="3" fill="#e63946"/>
+                    <rect x="14" y="44" width="5" height="20" fill="#e63946"/>
+                    <rect x="21" y="44" width="5" height="20" fill="#e63946"/>
+                    <g class="jt-bras" id="jt-bras-joueur">
+                        <rect x="20" y="19" width="20" height="5" fill="#e63946"/>
+                    </g>
+                </svg>
+            `;
+
+            return div;
+        }
+
+        const joueur = creerJoueur();
+        arene.appendChild(joueur);
+        const brasJoueur = joueur.querySelector('#jt-bras-joueur');
+
+        function surMouvementSouris(e) {
+
+            crosshair.style.left = e.clientX + 'px';
+            crosshair.style.top = e.clientY + 'px';
+
+            const rectJoueur = joueur.getBoundingClientRect();
+            const centreX = rectJoueur.left + (rectJoueur.width / 2);
+            const centreY = rectJoueur.top + (rectJoueur.height * 0.35);
+
+            const angle = Math.atan2(e.clientY - centreY, e.clientX - centreX) * (180 / Math.PI);
+
+            brasJoueur.style.transform = `rotate(${angle}deg)`;
+        }
+
+        document.addEventListener('mousemove', surMouvementSouris);
+
+        function creerImpactRate(x, y) {
+
+            const impact = document.createElement('div');
+            impact.style.position = 'fixed';
+            impact.style.left = x + 'px';
+            impact.style.top = y + 'px';
+            impact.style.width = '10px';
+            impact.style.height = '10px';
+            impact.style.marginLeft = '-5px';
+            impact.style.marginTop = '-5px';
+            impact.style.borderRadius = '50%';
+            impact.style.border = '2px solid rgba(255, 91, 91, 0.8)';
+            impact.style.zIndex = '2147483647';
+            impact.style.pointerEvents = 'none';
+            impact.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+
+            document.body.appendChild(impact);
+
+            void impact.offsetWidth;
+
+            requestAnimationFrame(function () {
+                impact.style.transform = 'scale(2.6)';
+                impact.style.opacity = '0';
+            });
+
+            setTimeout(function () {
+                impact.remove();
+            }, 320);
+        }
+
+        arene.addEventListener('click', function () {
+            if (!jeuActif) return;
+            jouerSonTir();
+            creerImpactRate(
+                parseFloat(crosshair.style.left),
+                parseFloat(crosshair.style.top)
+            );
+        });
+
+        function creerEnnemi() {
+
+            if (!jeuActif) return;
+
+            const div = document.createElement('div');
+            div.className = 'jt-ennemi jt-apparition';
+
+            const x = 40 + (Math.random() * (window.innerWidth - 80));
+            const y = 60 + (Math.random() * (window.innerHeight * 0.5));
+
+            div.style.left = x + 'px';
+            div.style.top = y + 'px';
+
+            // Angle du bras vers le joueur, calculé une seule fois : ni
+            // l'ennemi ni le joueur ne bougent après leur apparition.
+            const rectJoueur = joueur.getBoundingClientRect();
+            const centreJoueurX = rectJoueur.left + (rectJoueur.width / 2);
+            const centreJoueurY = rectJoueur.top + (rectJoueur.height * 0.35);
+
+            const epauleX = x + 20;
+            const epauleY = y + 21.5;
+
+            const angleVersJoueur = Math.atan2(
+                centreJoueurY - epauleY,
+                centreJoueurX - epauleX
+            ) * (180 / Math.PI);
+
+            div.innerHTML = `
+                <svg width="40" height="70" viewBox="0 0 40 70" style="overflow: visible;">
+                    <circle cx="20" cy="10" r="8" fill="#141c24"/>
+                    <rect x="14" y="18" width="12" height="26" rx="3" fill="#141c24"/>
+                    <rect x="14" y="44" width="5" height="20" fill="#141c24"/>
+                    <rect x="21" y="44" width="5" height="20" fill="#141c24"/>
+                    <rect x="9" y="20" width="5" height="17" fill="#141c24"/>
+                    <g class="jt-bras-ennemi" style="transform: rotate(${angleVersJoueur}deg);">
+                        <rect x="20" y="19" width="20" height="5" fill="#141c24"/>
+                        <rect x="37" y="16.5" width="10" height="6" rx="1.5" fill="#4a4f57"/>
+                    </g>
+                </svg>
+            `;
+
+            arene.appendChild(div);
+
+            const intensite = Math.min(score / 25, 1);
+            const delaiAvantTir = Math.max((1100 - (intensite * 700)) + (Math.random() * 500), 380);
+
+            const entree = { element: div, touche: false, tirEnCours: false, timeout: null };
+
+            entree.timeout = setTimeout(function () {
+                tirerSurJoueur(entree);
+            }, delaiAvantTir);
+
+            div.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toucherEnnemi(entree);
+            });
+
+            ennemisActifs.push(entree);
+        }
+
+        function retirerEnnemiDeLaListe(entree) {
+            const index = ennemisActifs.indexOf(entree);
+            if (index !== -1) ennemisActifs.splice(index, 1);
+        }
+
+        // =========================
+        // SONS (Web Audio, aucun fichier externe)
+        // =========================
+
+        let contexteAudio = null;
+
+        function obtenirContexteAudio() {
+            if (!contexteAudio) {
+                contexteAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return contexteAudio;
+        }
+
+        function jouerTonalite(freqDebut, freqFin, duree, type, volume) {
+
+            try {
+
+                const ctx = obtenirContexteAudio();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                osc.type = type;
+                osc.frequency.setValueAtTime(freqDebut, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(
+                    Math.max(freqFin, 1),
+                    ctx.currentTime + duree
+                );
+
+                gain.gain.setValueAtTime(volume, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duree);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start();
+                osc.stop(ctx.currentTime + duree);
+
+            } catch (e) {
+                // Audio indisponible : on ignore
+            }
+        }
+
+        function jouerSonTir() {
+            jouerTonalite(900, 500, 0.07, 'square', 0.06);
+        }
+
+        function jouerSonExplosionEnnemi() {
+            jouerTonalite(500, 110, 0.18, 'sawtooth', 0.15);
+        }
+
+        function jouerSonImpactJoueur() {
+            jouerTonalite(220, 55, 0.28, 'square', 0.2);
+        }
+
+        function jouerSonBombe() {
+            jouerTonalite(160, 35, 0.35, 'sine', 0.22);
+        }
+
+        function jouerSonGameOver() {
+
+            try {
+
+                const ctx = obtenirContexteAudio();
+                const notes = [392, 330, 262];
+
+                notes.forEach(function (frequence, i) {
+
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    const debut = ctx.currentTime + (i * 0.22);
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(frequence, debut);
+
+                    gain.gain.setValueAtTime(0.18, debut);
+                    gain.gain.exponentialRampToValueAtTime(0.001, debut + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(debut);
+                    osc.stop(debut + 0.3);
+                });
+
+            } catch (e) {
+                // Audio indisponible : on ignore
+            }
+        }
+
+        function jouerSonCompteARebours() {
+            jouerTonalite(620, 620, 0.12, 'sine', 0.16);
+        }
+
+        function jouerSonDebutPartie() {
+            jouerTonalite(420, 950, 0.22, 'square', 0.18);
+        }
+
+        // =========================
+        // TREMBLEMENT D'ÉCRAN
+        // =========================
+
+        let secousseIntensite = 0;
+        let idBoucleSecousse = null;
+
+        function declencherSecousse(force) {
+
+            secousseIntensite = Math.max(secousseIntensite, force);
+
+            if (!idBoucleSecousse) {
+                idBoucleSecousse = requestAnimationFrame(boucleSecousse);
+            }
+        }
+
+        function boucleSecousse() {
+
+            secousseIntensite *= 0.85;
+
+            if (secousseIntensite < 0.3) {
+                secousseIntensite = 0;
+                overlay.style.transform = '';
+                idBoucleSecousse = null;
+                return;
+            }
+
+            const x = ((Math.random() * 2) - 1) * secousseIntensite;
+            const y = ((Math.random() * 2) - 1) * secousseIntensite;
+
+            // On ne touche plus jamais au transform de <body> : ça cassait
+            // le positionnement fixed de l'overlay (et pouvait le faire
+            // suivre le défilement de la page). On secoue uniquement
+            // l'overlay du jeu lui-même — tout son contenu (joueur, HUD,
+            // viseur, ennemis) bouge ensemble, de façon cohérente et sans
+            // bug de position.
+            overlay.style.transform = `translate(${x}px, ${y}px)`;
+
+            idBoucleSecousse = requestAnimationFrame(boucleSecousse);
+        }
+
+        // =========================
+        // EXPLOSION GÉNÉRIQUE
+        // =========================
+
+        function creerExplosion(x, y, taille) {
+
+            const explosion = document.createElement('div');
+            explosion.className = 'am-explosion';
+            explosion.style.left = x + 'px';
+            explosion.style.top = y + 'px';
+            explosion.style.width = taille + 'px';
+            explosion.style.height = taille + 'px';
+
+            document.body.appendChild(explosion);
+
+            setTimeout(function () {
+                explosion.remove();
+            }, 600);
+        }
+
+        function toucherEnnemi(entree) {
+
+            if (entree.touche || entree.tirEnCours || !jeuActif) return;
+
+            entree.touche = true;
+            clearTimeout(entree.timeout);
+
+            score += 1;
+            elScore.textContent = score;
+
+            jouerSonTir();
+            jouerSonExplosionEnnemi();
+
+            declencherSecousse(6);
+
+            entree.element.style.transition = 'transform 0.3s ease-in, opacity 0.3s ease-in';
+            entree.element.style.transform = 'rotate(95deg) scale(0.75)';
+            entree.element.style.opacity = '0';
+
+            setTimeout(function () {
+                entree.element.remove();
+                retirerEnnemiDeLaListe(entree);
+            }, 320);
+        }
+
+        function tirerSurJoueur(entree) {
+
+            if (entree.touche || !jeuActif) return;
+
+            entree.tirEnCours = true;
+
+            const rectEnnemi = entree.element.getBoundingClientRect();
+            const rectJoueur = joueur.getBoundingClientRect();
+
+            const xDepart = rectEnnemi.left + (rectEnnemi.width / 2);
+            const yDepart = rectEnnemi.top + (rectEnnemi.height * 0.3);
+            const xArrivee = rectJoueur.left + (rectJoueur.width / 2);
+            const yArrivee = rectJoueur.top + (rectJoueur.height * 0.3);
+
+            const projectile = document.createElement('div');
+            projectile.style.position = 'fixed';
+            projectile.style.left = xDepart + 'px';
+            projectile.style.top = yDepart + 'px';
+            projectile.style.width = '8px';
+            projectile.style.height = '8px';
+            projectile.style.marginLeft = '-4px';
+            projectile.style.marginTop = '-4px';
+            projectile.style.borderRadius = '50%';
+            projectile.style.background = 'radial-gradient(circle, #fff, #ff5b5b 55%, #7a1010)';
+            projectile.style.boxShadow = '0 0 8px 2px rgba(255, 80, 80, 0.8)';
+            projectile.style.zIndex = '2147483647';
+            projectile.style.pointerEvents = 'none';
+
+            document.body.appendChild(projectile);
+
+            void projectile.offsetWidth;
+
+            const deltaX = xArrivee - xDepart;
+            const deltaY = yArrivee - yDepart;
+            const duree = 260;
+
+            projectile.style.transition = `transform ${duree}ms linear`;
+
+            requestAnimationFrame(function () {
+                projectile.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            });
+
+            entree.element.style.transition = 'opacity 0.25s ease-out';
+            entree.element.style.opacity = '0.35';
+
+            setTimeout(function () {
+
+                projectile.remove();
+                entree.element.remove();
+                retirerEnnemiDeLaListe(entree);
+
+                if (!jeuActif) return;
+
+                creerExplosion(xArrivee, yArrivee, 22);
+                declencherSecousse(14);
+                jouerSonImpactJoueur();
+                flashJoueurTouche();
+                perdreVie();
+
+            }, duree);
+        }
+
+        function flashJoueurTouche() {
+
+            const flash = document.createElement('div');
+            flash.style.position = 'fixed';
+            flash.style.inset = '0';
+            flash.style.background = 'rgba(255, 0, 0, 0.18)';
+            flash.style.zIndex = '2147483000';
+            flash.style.pointerEvents = 'none';
+            flash.style.transition = 'opacity 0.3s ease-out';
+
+            document.body.appendChild(flash);
+
+            void flash.offsetWidth;
+
+            requestAnimationFrame(function () {
+                flash.style.opacity = '0';
+            });
+
+            setTimeout(function () {
+                flash.remove();
+            }, 320);
+        }
+
+        function perdreVie() {
+
+            vies -= 1;
+            elVies.textContent = Math.max(vies, 0);
+
+            if (vies <= 0) {
+                terminerJeu();
+            }
+        }
+
+        function planifierProchainEnnemi() {
+
+            if (!jeuActif) return;
+
+            const intensite = Math.min(score / 25, 1);
+            const delaiBase = 1600 - (intensite * 1150);
+            const delai = Math.max(delaiBase + (Math.random() * 500), 350);
+
+            idProchainEnnemi = setTimeout(function () {
+                creerEnnemi();
+                planifierProchainEnnemi();
+            }, delai);
+        }
+
+        // =========================
+        // BOMBES ARMAGEDDON (ciblent et détruisent du texte réel de la page)
+        // =========================
+
+        let poolMotsCibles = null;
+        let idProchaineBombe = null;
+        let idSecousseAleatoire = null;
+
+        const DUREE_MONTEE_BOMBES = 32000; // 32s pour atteindre le rythme max
+
+        function estZoneProtegeeArmageddon(element) {
+            return element.closest(
+                '#jt-overlay, [data-traduction-machine]'
+            ) !== null;
+        }
+
+        function preparerPoolMots() {
+
+            const marcheur = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            const pool = [];
+            let noeud;
+
+            while ((noeud = marcheur.nextNode())) {
+
+                const texte = noeud.nodeValue;
+                if (!texte || !texte.trim()) continue;
+
+                const parent = noeud.parentElement;
+                if (!parent) continue;
+
+                const tag = parent.tagName;
+                if (
+                    tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' ||
+                    tag === 'TEXTAREA' || tag === 'INPUT'
+                ) {
+                    continue;
+                }
+
+                if (estZoneProtegeeArmageddon(parent)) continue;
+
+                pool.push(noeud);
+            }
+
+            return pool;
+        }
+
+        function trouverMotCible() {
+
+            if (!poolMotsCibles) {
+                poolMotsCibles = preparerPoolMots();
+            }
+
+            while (poolMotsCibles.length > 0) {
+
+                const index = Math.floor(Math.random() * poolMotsCibles.length);
+                const noeudChoisi = poolMotsCibles[index];
+
+                if (
+                    !noeudChoisi.isConnected ||
+                    !noeudChoisi.nodeValue ||
+                    !noeudChoisi.nodeValue.trim()
+                ) {
+                    poolMotsCibles.splice(index, 1);
+                    continue;
+                }
+
+                const texte = noeudChoisi.nodeValue;
+                const regexMot = /\S+/g;
+                const mots = [];
+                let m;
+
+                while ((m = regexMot.exec(texte)) !== null) {
+                    mots.push({ debut: m.index, fin: m.index + m[0].length });
+                }
+
+                if (mots.length === 0) {
+                    poolMotsCibles.splice(index, 1);
+                    continue;
+                }
+
+                const motChoisi = mots[Math.floor(Math.random() * mots.length)];
+
+                let noeudMot = noeudChoisi;
+                if (motChoisi.debut > 0) {
+                    noeudMot = noeudMot.splitText(motChoisi.debut);
+                }
+                if ((motChoisi.fin - motChoisi.debut) < noeudMot.nodeValue.length) {
+                    noeudMot.splitText(motChoisi.fin - motChoisi.debut);
+                }
+
+                const span = document.createElement('span');
+                span.className = 'am-mot-cible';
+                noeudMot.parentNode.insertBefore(span, noeudMot);
+                span.appendChild(noeudMot);
+
+                poolMotsCibles.splice(index, 1);
+
+                return span;
+            }
+
+            return null;
+        }
+
+        function exploserMot(span) {
+
+            span.style.transition = 'transform 0.3s ease-in, opacity 0.3s ease-in';
+            span.style.transform = `scale(0.2) rotate(${(Math.random() * 60) - 30}deg)`;
+            span.style.opacity = '0';
+
+            setTimeout(function () {
+                span.remove();
+            }, 320);
+        }
+
+        function exploserImpactBombe(x, y, taille) {
+
+            creerExplosion(x, y, taille);
+            jouerSonBombe();
+        }
+
+        function lancerBombeArmageddon() {
+
+            if (!jeuActif) return;
+
+            const cible = trouverMotCible();
+            if (!cible) return;
+
+            const rectCible = cible.getBoundingClientRect();
+            const cibleX = rectCible.left + (rectCible.width / 2);
+            const cibleY = rectCible.top + (rectCible.height / 2);
+
+            const xDepart = Math.random() * window.innerWidth;
+            const yDepart = -60;
+
+            const bombe = document.createElement('div');
+            bombe.className = 'am-boule-feu';
+
+            const taille = 14 + (Math.random() * 10);
+            bombe.style.width = taille + 'px';
+            bombe.style.height = taille + 'px';
+            bombe.style.left = xDepart + 'px';
+            bombe.style.top = yDepart + 'px';
+
+            const deltaX = cibleX - xDepart;
+            const deltaY = cibleY - yDepart;
+            const angle = ((Math.atan2(deltaY, deltaX) * 180) / Math.PI) + 90;
+
+            bombe.style.transform = `rotate(${angle}deg)`;
+
+            document.body.appendChild(bombe);
+
+            void bombe.offsetWidth;
+
+            const duree = 600 + (Math.random() * 300);
+            bombe.style.transition = `transform ${duree}ms ease-in`;
+
+            requestAnimationFrame(function () {
+                bombe.style.transform =
+                    `translate(${deltaX}px, ${deltaY}px) rotate(${angle}deg)`;
+            });
+
+            setTimeout(function () {
+                bombe.remove();
+                exploserImpactBombe(cibleX, cibleY, taille);
+                exploserMot(cible);
+            }, duree);
+        }
+
+        function planifierProchaineBombe(instantDebut) {
+
+            if (!jeuActif) return;
+
+            const tEcoule = performance.now() - instantDebut;
+            const intensite = Math.min(tEcoule / DUREE_MONTEE_BOMBES, 1);
+
+            const delaiBase = 1900 - (intensite * 1700);
+            const delai = Math.max(delaiBase + (Math.random() * delaiBase * 0.5), 100);
+
+            idProchaineBombe = setTimeout(function () {
+
+                lancerBombeArmageddon();
+
+                if (intensite > 0.35 && Math.random() < intensite) {
+                    lancerBombeArmageddon();
+                }
+
+                if (intensite > 0.7 && Math.random() < (intensite - 0.4)) {
+                    lancerBombeArmageddon();
+                }
+
+                planifierProchaineBombe(instantDebut);
+
+            }, delai);
+        }
+
+        function demarrerPartie() {
+
+            score = 0;
+            vies = 5;
+            jeuActif = true;
+
+            elScore.textContent = score;
+            elVies.textContent = vies;
+
+            ecranFin.style.display = 'none';
+
+            planifierProchainEnnemi();
+            planifierSecousseAleatoire();
+        }
+
+        function planifierSecousseAleatoire() {
+
+            if (!jeuActif) return;
+
+            const delai = 3000 + (Math.random() * 5000);
+
+            idSecousseAleatoire = setTimeout(function () {
+
+                if (jeuActif) {
+                    declencherSecousse(5 + (Math.random() * 5));
+                }
+
+                planifierSecousseAleatoire();
+
+            }, delai);
+        }
+
+        function terminerJeu() {
+
+            jeuActif = false;
+            clearTimeout(idProchainEnnemi);
+            clearTimeout(idProchaineBombe);
+            clearTimeout(idSecousseAleatoire);
+
+            ennemisActifs.forEach(function (entree) {
+                clearTimeout(entree.timeout);
+                entree.element.remove();
+            });
+            ennemisActifs = [];
+
+            jouerSonGameOver();
+
+            ecranFin.style.display = 'flex';
+
+            setTimeout(function () {
+                fermerJeu(true);
+            }, 2800);
+        }
+
+        function fermerJeu(recharger) {
+
+            jeuActif = false;
+            jeuOuvert = false;
+
+            clearTimeout(idProchainEnnemi);
+            clearTimeout(idProchaineBombe);
+            clearTimeout(idSecousseAleatoire);
+
+            ennemisActifs.forEach(function (entree) {
+                clearTimeout(entree.timeout);
+            });
+            ennemisActifs = [];
+
+            document.removeEventListener('mousemove', surMouvementSouris);
+
+            secousseIntensite = 0;
+
+            motsRusseTombes.forEach(function (span) {
+                span.remove();
+            });
+            motsRusseTombes = [];
+
+            overlay.remove();
+
+            // Uniquement après l'écran de fin (pas lors d'une fermeture
+            // manuelle via la croix) : on actualise la page pour repartir
+            // sur une base propre.
+            if (recharger === true) {
+                window.location.reload();
+            }
+        }
+
+        boutonFermer.addEventListener('click', fermerJeu);
+
+        // =========================
+        // ÉCRAN WARZONE + COMPTE À REBOURS avant le démarrage réel
+        // =========================
+
+        (function demarrerCompteARebours() {
+
+            let compte = 3;
+            compteARebours.textContent = String(compte);
+            jouerSonCompteARebours();
+
+            const intervalle = setInterval(function () {
+
+                compte -= 1;
+
+                if (compte > 0) {
+                    compteARebours.textContent = String(compte);
+                    jouerSonCompteARebours();
+                    return;
+                }
+
+                clearInterval(intervalle);
+                ecranWarzone.remove();
+
+                jouerSonDebutPartie();
+                demarrerPartie();
+                planifierProchaineBombe(performance.now());
+
+            }, 1000);
+
+        })();
+    }
+
+    // =========================
+    // SCAN D'UN TEXT NODE
+    // =========================
+
+    function traiterTextNode(node) {
+
+        if (!node || node.nodeType !== Node.TEXT_NODE) {
+            return;
+        }
+
+        const texte = node.nodeValue;
+
+        if (!texte) return;
+
+        const parent = node.parentElement;
+
+        if (!parent) return;
+
+        // Ne pas toucher aux zones sensibles
+        const tag = parent.tagName;
+
+        if (
+            tag === 'SCRIPT' ||
+            tag === 'STYLE' ||
+            tag === 'NOSCRIPT' ||
+            tag === 'TEXTAREA' ||
+            tag === 'INPUT'
+        ) {
+            return;
+        }
+
+        // On ne cherche que la PREMIÈRE occurrence : le nœud est ensuite
+        // découpé et le reste est traité récursivement (voir plus bas).
+        const regex = /CU[A-Z][1-9][GD]/;
+        const match = regex.exec(texte);
+
+        if (!match) return;
+
+        const code = match[0];
+        const traduction = traductions[code];
+
+        if (!traduction) return;
+
+        const finCode = match.index + code.length;
+        const codeEnFinDeNoeud = finCode === texte.length;
+
+        if (codeEnFinDeNoeud) {
+
+            // Si le code est en toute fin de nœud, il peut s'agir d'un
+            // nœud déjà découpé lors d'un passage précédent : on vérifie
+            // que la traduction n'est pas déjà présente juste après.
+            const suivant = node.nextSibling;
+
+            const dejaTraduit =
+                suivant &&
+                suivant.nodeType === Node.ELEMENT_NODE &&
+                suivant.getAttribute &&
+                suivant.getAttribute('data-traduction-machine') === code;
+
+            if (dejaTraduit) {
+                return;
+            }
+        }
+
+        // =========================
+        // DÉCOUPAGE ET AJOUT DE LA TRADUCTION
+        // =========================
+
+        // Sépare le nœud juste après le code trouvé : "node" garde le
+        // texte jusqu'au code inclus, "reste" récupère la suite.
+        const reste = node.splitText(finCode);
+
+        const span = document.createElement('span');
+
+        span.textContent = ` (${traduction})`;
+
+        span.style.color = 'red';
+        span.style.fontWeight = 'bold';
+        span.style.cursor = 'pointer';
+
+        span.setAttribute(
+            'data-traduction-machine',
+            code
+        );
+
+        // C'est le clic sur cette traduction rouge qui ouvre le jeu de tir
+        span.addEventListener('click', function () {
+            ouvrirJeuDeTir();
+        });
+
+        node.parentNode.insertBefore(span, reste);
+
+        // Traite immédiatement le reste du texte : si plusieurs codes
+        // partagent le même nœud d'origine, ils sont tous traduits en
+        // une seule passe, dans l'ordre, sans attendre le prochain scan.
+        traiterTextNode(reste);
+    }
+
+    // =========================
+    // SCAN
+    // =========================
+
+    function scanner(element) {
+
+        if (!element) return;
+
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT
+        );
+
+        const nodes = [];
+
+        let node;
+
+        while ((node = walker.nextNode())) {
+            nodes.push(node);
+        }
+
+        nodes.forEach(traiterTextNode);
+    }
+
+    // =========================
+    // LANCEMENT
+    // =========================
+
+    function lancer() {
+
+        if (!document.body) return;
+
+        scanner(document.body);
+    }
+
+    lancer();
+
+    // =========================
+    // MUTATION OBSERVER
+    // =========================
+
+    const observer = new MutationObserver(
+        function (mutations) {
+
+            mutations.forEach(function (mutation) {
+
+                mutation.addedNodes.forEach(function (node) {
+
+                    if (
+                        node.nodeType === Node.ELEMENT_NODE
+                    ) {
+
+                        if (
+                            !node.hasAttribute(
+                                'data-traduction-machine'
+                            )
+                        ) {
+                            scanner(node);
+                        }
+                    }
+
+                    else if (
+                        node.nodeType === Node.TEXT_NODE
+                    ) {
+                        traiterTextNode(node);
+                    }
+
+                });
+
+            });
+
+        }
+    );
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // =========================
+    // SURVEILLANCE NAVIGATION
+    // =========================
+
+    const ancienPushState =
+        history.pushState;
+
+    history.pushState = function () {
+
+        const resultat =
+            ancienPushState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    const ancienReplaceState =
+        history.replaceState;
+
+    history.replaceState = function () {
+
+        const resultat =
+            ancienReplaceState.apply(
+                this,
+                arguments
+            );
+
+        setTimeout(lancer, 300);
+        setTimeout(lancer, 1000);
+        setTimeout(lancer, 2000);
+
+        return resultat;
+    };
+
+    window.addEventListener(
+        'popstate',
+        function () {
+
+            setTimeout(lancer, 300);
+            setTimeout(lancer, 1000);
+            setTimeout(lancer, 2000);
+
+        }
+    );
+
+    // =========================
+    // FILET DE SÉCURITÉ
+    // =========================
+
+    // Certaines applications changent de page
+    // sans utiliser correctement l'API History.
+    // On rescane donc périodiquement.
+
+    setInterval(function () {
+
+        lancer();
+
+    }, 3000);
+
+    console.log(
+        '[Traduction Machines Atelier3 Jeu de Tir] ACTIVE'
+    );
+
+})();
