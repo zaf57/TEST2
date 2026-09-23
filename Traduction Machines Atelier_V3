@@ -156,6 +156,7 @@
 
         span.style.color = 'orange';
         span.style.fontWeight = 'bold';
+        span.style.whiteSpace = 'nowrap';
 
         span.setAttribute(
             'data-traduction-machine',
