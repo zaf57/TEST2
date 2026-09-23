@@ -1,0 +1,516 @@
+// ==UserScript==
+// @name         Traduction Machines Atelier4 Boss
+// @namespace    atelier.traduction.machines
+// @version      1.0
+// @description  Traduit les codes machines (CUA1G -> 1/1G). Clic sur une traduction rouge : tous les codes de la page fusionnent en une machine géante à combattre.
+// @match        *://*/*
+// @run-at       document-idle
+// @grant        none
+// ==/UserScript==
+
+// NOTE : remplace la ligne @match ci-dessus par l'adresse de ton site de travail
+// et recopie ta liste d'exclusions d'URL dans EXCLURE_URLS (comme dans les autres scripts).
+
+(function () {
+    'use strict';
+
+    const NOM = '[Traduction Machines Atelier4 Boss]';
+    const EXCLURE_URLS = []; // ex : ['/admin', 'exemple.com/pagesensible']
+
+    for (let i = 0; i < EXCLURE_URLS.length; i++) {
+        if (location.href.indexOf(EXCLURE_URLS[i]) !== -1) return;
+    }
+    if (window.__tm4Boss) return;
+    window.__tm4Boss = true;
+
+    const TAU = Math.PI * 2;
+    const LETTRES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const CLASSE = 'tm4-trad';
+    const REGEX_CODE = /CU[A-Z][1-9][GD]/;
+    let jeuActif = false;
+    let ac = null; // contexte audio partagé
+
+    // =====================================================
+    // TRADUCTION DES CODES
+    // =====================================================
+
+    function traduire(code) {
+        const m = /^CU([A-Z])([1-9])([GD])$/.exec(code);
+        if (!m) return null;
+        return (LETTRES.indexOf(m[1]) + 1) + '/' + m[2] + m[3];
+    }
+
+    function estNotre(node) {
+        return node && node.nodeType === 1 && node.classList && node.classList.contains(CLASSE);
+    }
+
+    function creerSpan(code) {
+        const s = document.createElement('span');
+        s.className = CLASSE;
+        s.setAttribute('data-code', code);
+        s.textContent = traduire(code);
+        s.style.cssText = 'color:#e53935;font-weight:700;margin-left:4px;cursor:pointer;';
+        s.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            lancerBoss();
+        });
+        return s;
+    }
+
+    function traiterTextNode(node) {
+        if (!node || !node.parentNode) return;
+        const parent = node.parentNode;
+        if (parent.nodeType === 1) {
+            if (parent.classList.contains(CLASSE)) return;
+            const tag = parent.tagName;
+            if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'NOSCRIPT' || tag === 'INPUT' || tag === 'CANVAS') return;
+            if (parent.isContentEditable) return;
+            if (parent.closest && parent.closest('#tm4-overlay')) return;
+        }
+        const texte = node.nodeValue;
+        if (!texte) return;
+        const m = REGEX_CODE.exec(texte);
+        if (!m) return;
+
+        const code = m[0];
+        const debut = m.index;
+        const fin = debut + code.length;
+
+        // isole le code dans son propre noeud texte
+        let noeudCode = node;
+        let reste = null;
+        if (fin < texte.length) reste = node.splitText(fin);
+        if (debut > 0) noeudCode = node.splitText(debut);
+
+        const suivant = noeudCode.nextSibling;
+        if (suivant && estNotre(suivant) && suivant.getAttribute('data-code') === code) {
+            // déjà traduit
+        } else {
+            if (suivant && estNotre(suivant)) suivant.remove(); // traduction périmée
+            parent.insertBefore(creerSpan(code), noeudCode.nextSibling);
+        }
+        if (reste) traiterTextNode(reste);
+    }
+
+    function nettoyerOrphelins() {
+        document.querySelectorAll('.' + CLASSE).forEach(function (s) {
+            const p = s.previousSibling;
+            if (!p || p.nodeType !== 3 || p.nodeValue !== s.getAttribute('data-code')) s.remove();
+        });
+    }
+
+    function scanner() {
+        if (!document.body) return;
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+        const noeuds = [];
+        let n;
+        while ((n = w.nextNode())) {
+            if (n.nodeValue && n.nodeValue.indexOf('CU') !== -1) noeuds.push(n);
+        }
+        noeuds.forEach(traiterTextNode);
+    }
+
+    function lancer() {
+        if (jeuActif) return;
+        nettoyerOrphelins();
+        scanner();
+    }
+
+    let planifie = false;
+    function planifierScan() {
+        if (planifie) return;
+        planifie = true;
+        setTimeout(function () {
+            planifie = false;
+            lancer();
+        }, 150);
+    }
+
+    const observateur = new MutationObserver(function (muts) {
+        if (jeuActif) return;
+        let utile = false;
+        for (let i = 0; i < muts.length; i++) {
+            const m = muts[i];
+            if (m.type === 'characterData') {
+                // les widgets qui réutilisent un noeud : on retire la traduction périmée
+                const n = m.target;
+                const s = n.nextSibling;
+                if (s && estNotre(s) && n.nodeValue !== s.getAttribute('data-code')) s.remove();
+                utile = true;
+            } else if (m.type === 'childList') {
+                for (let j = 0; j < m.addedNodes.length; j++) {
+                    if (!estNotre(m.addedNodes[j])) { utile = true; break; }
+                }
+            }
+        }
+        if (utile) planifierScan();
+    });
+
+    // =====================================================
+    // OUTILS AUDIO / MATHS
+    // =====================================================
+
+    function audio() {
+        if (!ac) {
+            try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
+        }
+        if (ac && ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+        return ac;
+    }
+
+    function bip(f1, f2, dur, type, vol) {
+        const a = audio();
+        if (!a) return;
+        try {
+            const o = a.createOscillator();
+            const g = a.createGain();
+            const t = a.currentTime;
+            o.type = type || 'square';
+            o.frequency.setValueAtTime(f1, t);
+            o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur);
+            g.gain.setValueAtTime(vol || 0.05, t);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            o.connect(g);
+            g.connect(a.destination);
+            o.start(t);
+            o.stop(t + dur + 0.02);
+        } catch (e) {}
+    }
+
+    function bruit(dur, vol, fc) {
+        const a = audio();
+        if (!a) return;
+        try {
+            const n = Math.floor(a.sampleRate * dur);
+            const buf = a.createBuffer(1, n, a.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+            const src = a.createBufferSource();
+            src.buffer = buf;
+            const f = a.createBiquadFilter();
+            f.type = 'lowpass';
+            f.frequency.value = fc || 800;
+            const g = a.createGain();
+            g.gain.value = vol || 0.1;
+            src.connect(f);
+            f.connect(g);
+            g.connect(a.destination);
+            src.start();
+        } catch (e) {}
+    }
+
+    function melanger(t) {
+        for (let i = t.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const x = t[i]; t[i] = t[j]; t[j] = x;
+        }
+        return t;
+    }
+
+    function lisse(p) {
+        p = Math.max(0, Math.min(1, p));
+        return p * p * (3 - 2 * p);
+    }
+
+    function rr(c, x, y, w, h, r) {
+        c.beginPath();
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+        c.closePath();
+    }
+
+    // =====================================================
+    // LE JEU : BOSS GÉANT
+    // =====================================================
+
+    function lancerBoss() {
+        if (jeuActif) return;
+        jeuActif = true;
+        audio();
+
+        // ---------- collecte des codes présents sur la page ----------
+        const sources = [];
+        document.querySelectorAll('.' + CLASSE).forEach(function (s) {
+            const r = s.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) {
+                sources.push({ code: s.getAttribute('data-code'), x: r.left + r.width / 2, y: r.top + r.height / 2 });
+            }
+        });
+
+        const dejaVus = {};
+        const pool = [];
+        sources.forEach(function (s) {
+            if (!dejaVus[s.code]) { dejaVus[s.code] = 1; pool.push(s.code); }
+        });
+        while (pool.length < 8) {
+            const c = 'CU' + LETTRES[Math.floor(Math.random() * 26)] + (1 + Math.floor(Math.random() * 9)) + (Math.random() < 0.5 ? 'G' : 'D');
+            if (!dejaVus[c]) { dejaVus[c] = 1; pool.push(c); }
+        }
+        melanger(pool);
+
+        const volantsSrc = sources.slice(0, 40);
+        while (volantsSrc.length < 14) {
+            volantsSrc.push({
+                code: pool[volantsSrc.length % pool.length],
+                x: Math.random() * innerWidth,
+                y: Math.random() < 0.5 ? -20 : innerHeight + 20
+            });
+        }
+
+        // ---------- cibles réelles pour les bombes (texte de la page) ----------
+        const cibles = [];
+        const vus = new Set();
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+        let tn;
+        while ((tn = walker.nextNode()) && cibles.length < 250) {
+            if (!tn.nodeValue || !tn.nodeValue.trim()) continue;
+            const el = tn.parentElement;
+            if (!el || vus.has(el)) continue;
+            const tag = el.tagName;
+            if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+            const r = el.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8 || r.width > 700 || r.height > 140) continue;
+            if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
+            vus.add(el);
+            cibles.push({
+                el: el,
+                x: Math.min(innerWidth - 20, Math.max(20, r.left + r.width / 2)),
+                y: Math.min(innerHeight * 0.85, Math.max(40, r.top + r.height / 2))
+            });
+        }
+        const modifs = new Map();
+
+        // ---------- overlay + canvas ----------
+        const overlay = document.createElement('div');
+        overlay.id = 'tm4-overlay';
+        overlay.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2147483647;cursor:none;user-select:none;-webkit-user-select:none;touch-action:none;';
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'display:block;';
+        overlay.appendChild(canvas);
+        const btnFermer = document.createElement('div');
+        btnFermer.textContent = '\u2715';
+        btnFermer.title = 'Quitter (Échap)';
+        btnFermer.style.cssText = 'position:absolute;top:10px;right:12px;width:32px;height:32px;line-height:32px;text-align:center;color:#fff;background:rgba(0,0,0,.55);border:1px solid #888;border-radius:50%;font:16px Arial;cursor:pointer;';
+        overlay.appendChild(btnFermer);
+        document.body.appendChild(overlay);
+        const ctx = canvas.getContext('2d');
+
+        let W = innerWidth, H = innerHeight, U = 1, dpr = 1;
+        function redim() {
+            W = innerWidth;
+            H = innerHeight;
+            dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.floor(W * dpr);
+            canvas.height = Math.floor(H * dpr);
+            canvas.style.width = W + 'px';
+            canvas.style.height = H + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            U = Math.max(0.5, Math.min(1.5, Math.min(W / 1000, H / 760)));
+        }
+        redim();
+
+        // ---------- état du jeu ----------
+        let actif = true;
+        let raf = 0;
+        let derniere = performance.now();
+        let etat = 'alerte';
+        let tEtat = 0;
+        let sirenIdx = -1;
+        let shake = 0, flashRouge = 0, flashBlanc = 0;
+        let voileAlpha = 0;
+        let tirEnCours = false;
+        let victoireFlag = false;
+        let joueurMort = false;
+        let rechargement = false;
+        let phaseCible = 2;
+        let transInstall = false;
+        let timerBoom = 0;
+        const souris = { x: W / 2, y: H / 2 };
+
+        const joueur = { x: W / 2, y: H - 60, vies: 5, inv: 0, cd: 0, ang: -Math.PI / 2 };
+        const boss = {
+            x: W / 2, y: H * 0.31, x0: W / 2, phase: 1, t: 0, spirale: 0,
+            noyauHp: 40, noyauMax: 40, noyauExpose: false, flash: 0,
+            modules: [], timers: { a: 0, b: 0, c: 0, d: 0, spiral: 0 }, visible: true
+        };
+        const SLOTS = [{ ox: -262, oy: 34 }, { ox: 262, oy: 34 }, { ox: -140, oy: -102 }, { ox: 140, oy: -102 }];
+        const NOMS_PHASES = ['ARMEMENT', 'BOUCLIERS ORBITAUX', 'NOYAU CRITIQUE'];
+        const COUL_EXPLO = ['#ffffff', '#ffd54f', '#ff9800', '#ff5722', '#b71c1c'];
+
+        const tirs = [], ennemis = [], bombes = [], lasers = [], parts = [], traces = [];
+
+        const volants = volantsSrc.map(function (s, i) {
+            return { code: s.code, x0: s.x, y0: s.y, delai: (i / volantsSrc.length) * 0.7, arrive: false, x: s.x, y: s.y, p: 0, sens: i % 2 ? 1 : -1 };
+        });
+
+        function changerEtat(e) { etat = e; tEtat = 0; }
+
+        // ---------- modules du boss ----------
+        function creerModule(code, hp) {
+            return { code: code, trad: traduire(code), hp: hp, max: hp, vivant: true, ox: 0, oy: 0, px: 0, py: 0, flash: 0, ang: 0, echelle: 1, type: 'canon', slot: SLOTS[0] };
+        }
+
+        function installerPhase(n) {
+            boss.phase = n;
+            boss.timers = { a: 0, b: 0, c: 0, d: 0, spiral: 0 };
+            boss.modules = [];
+            boss.noyauExpose = (n === 3);
+            if (n === 1) {
+                for (let i = 0; i < 4; i++) {
+                    const m = creerModule(pool[i % pool.length], 8);
+                    m.slot = SLOTS[i];
+                    m.type = i < 2 ? 'canon' : 'tour';
+                    boss.modules.push(m);
+                }
+            } else if (n === 2) {
+                for (let i = 0; i < 3; i++) {
+                    const m = creerModule(pool[(4 + i) % pool.length], 7);
+                    m.type = 'orbite';
+                    m.ang = i * TAU / 3;
+                    boss.modules.push(m);
+                }
+            } else if (n === 3) {
+                boss.noyauHp = boss.noyauMax;
+            }
+            majModules(0);
+        }
+
+        function majModules(dt) {
+            boss.modules.forEach(function (m) {
+                if (m.flash > 0) m.flash -= dt;
+                if (m.type === 'orbite') {
+                    m.ang += dt * 0.9;
+                    m.ox = Math.cos(m.ang) * 210;
+                    m.oy = Math.sin(m.ang) * 125;
+                } else {
+                    m.ox = m.slot.ox;
+                    m.oy = m.slot.oy + Math.sin(boss.t * 2 + m.ang) * 4;
+                }
+                m.px = boss.x + m.ox * U;
+                m.py = boss.y + m.oy * U;
+            });
+        }
+
+        function deplacerBoss() {
+            const ph = boss.phase;
+            const amp = ph === 1 ? 0.10 : ph === 2 ? 0.16 : 0.18;
+            const vit = ph === 1 ? 0.6 : ph === 2 ? 0.7 : 0.9;
+            boss.x = W / 2 + Math.sin(boss.t * vit) * W * amp;
+            boss.y = H * 0.31 + Math.sin(boss.t * 1.3) * 6 * U;
+        }
+
+        installerPhase(1);
+        boss.modules.forEach(function (m) { m.echelle = 0; });
+
+        // ---------- particules / effets ----------
+        function boom(x, y, n, coul, vit) {
+            if (parts.length > 700) return;
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * TAU;
+                const v = (0.25 + Math.random()) * vit * U;
+                parts.push({
+                    x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+                    life: 0, max: 0.45 + Math.random() * 0.7,
+                    r: (2 + Math.random() * 4) * U,
+                    c: coul[Math.floor(Math.random() * coul.length)]
+                });
+            }
+        }
+
+        function etincelles(x, y) { boom(x, y, 4, ['#fff59d', '#ffffff', '#90caf9'], 220); }
+
+        function majParticules(dt) {
+            for (let i = parts.length - 1; i >= 0; i--) {
+                const p = parts[i];
+                p.life += dt;
+                if (p.life >= p.max) { parts.splice(i, 1); continue; }
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vx *= 0.985;
+                p.vy = p.vy * 0.985 + 120 * U * dt;
+            }
+        }
+
+        // ---------- projectiles ----------
+        function viser(x, y) {
+            return Math.atan2(joueur.y - 30 * U - y, joueur.x - x);
+        }
+
+        function tirEnnemi(x, y, ang, vit, r) {
+            ennemis.push({ x: x, y: y, vx: Math.cos(ang) * vit * U, vy: Math.sin(ang) * vit * U, r: r * U });
+        }
+
+        function tirer() {
+            const ox = joueur.x, oy = joueur.y - 38 * U, a = joueur.ang;
+            tirs.push({
+                x: ox + Math.cos(a) * 44 * U, y: oy + Math.sin(a) * 44 * U,
+                vx: Math.cos(a) * 1100 * U, vy: Math.sin(a) * 1100 * U
+            });
+            bip(760, 220, 0.06, 'square', 0.025);
+        }
+
+        function lancerBombes(n) {
+            for (let i = 0; i < n; i++) {
+                let tx, ty, el = null;
+                if (cibles.length) {
+                    const t = cibles[Math.floor(Math.random() * cibles.length)];
+                    tx = t.x; ty = t.y; el = t.el;
+                } else {
+                    tx = 40 + Math.random() * (W - 80);
+                    ty = H * 0.4 + Math.random() * H * 0.4;
+                }
+                bombes.push({ x: tx, y: -30, tx: tx, ty: Math.max(ty, 60), vy: (330 + Math.random() * 90) * U, el: el });
+            }
+            bip(200, 90, 0.4, 'sawtooth', 0.05);
+        }
+
+        function lancerLasers() {
+            lasers.push({ x: joueur.x, w: 64 * U, t: 0, tel: 1.3, act: 0.55 });
+            lasers.push({ x: 60 * U + Math.random() * (W - 120 * U), w: 64 * U, t: 0, tel: 1.3, act: 0.55 });
+            bip(300, 900, 1.2, 'sawtooth', 0.05);
+        }
+
+        function bruler(el) {
+            if (!el) return;
+            if (!modifs.has(el)) modifs.set(el, { op: el.style.opacity, tr: el.style.transition });
+            el.style.transition = 'opacity .25s';
+            el.style.opacity = '0.08';
+        }
+
+        function exploserBombe(b) {
+            boom(b.tx, b.ty, 46, COUL_EXPLO, 320);
+            traces.push({ x: b.tx, y: b.ty, r: (50 + Math.random() * 25) * U });
+            if (traces.length > 60) traces.shift();
+            bruler(b.el);
+            shake = Math.max(shake, 7);
+            bruit(0.5, 0.16, 900);
+            if (Math.hypot(joueur.x - b.tx, (joueur.y - 30 * U) - b.ty) < 80 * U) toucher();
+        }
+
+        // ---------- dégâts ----------
+        function toucher() {
+            if (joueur.inv > 0 || joueurMort || etat === 'fin' || etat === 'victoire') return;
+            joueur.vies--;
+            joueur.inv = 1.5;
+            shake = Math.max(shake, 16);
+            flashRouge = 0.7;
+            bip(180, 40, 0.35, 'sawtooth', 0.12);
+            bruit(0.3, 0.14, 700);
+            boom(joueur.x, joueur.y - 30 * U, 24, ['#ff5252', '#ffffff', '#b71c1c'], 260);
+            if (joueur.vies <= 0) defaite();
+        }
+
+        function degatsModule(m) {
+            m.hp--;
+            m.flash = 0.08;
+            bip(300, 120, 0.08, 'triangle', 0.05);
+            if (m.hp <= 0) {
+                m.vivant = false;
+                boom(m.px, m.py, 60, COUL_EXPLO, 340);
+                shake = Math.max(shake, 10);
+                bruit(0.6, 0.2, 800);
+                if (boss.modules.every(function (x) { return !x.viv
