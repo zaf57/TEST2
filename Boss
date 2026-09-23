@@ -4,6 +4,7 @@
 // @version      1.0
 // @description  Traduit les codes machines (CUA1G -> 1/1G). Clic sur une traduction rouge : tous les codes de la page fusionnent en une machine géante à combattre.
 // @match        *://*/*
+// @match        file:///*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -513,4 +514,4 @@
                 boom(m.px, m.py, 60, COUL_EXPLO, 340);
                 shake = Math.max(shake, 10);
                 bruit(0.6, 0.2, 800);
-                if (boss.modules.every(function (x) { return !x.viv
+                if (boss.modules.every(f
