@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Traduction Machines Atelier_V3
+// @name         Traduction Machines Atelier_V3mobile
 // @match        *://*/*
 // @grant        unsafeWindow
 // @run-at       document-idle
@@ -316,7 +316,7 @@
     }, 3000);
 
     console.log(
-        '[Traduction Machines Atelier2] ACTIVE'
+        '[Traduction Machines Atelier] ACTIVE'
     );
 
 })();
