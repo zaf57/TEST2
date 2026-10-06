@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Cartes Machines - Pop-up
 // @namespace    cartes-machines
-// @version      1.7
-// @description  Affiche dans une pop-up les infos des cartes machines photographiées avec l'app.
+// @version      2.0
+// @description  Affiche dans une pop-up les infos des cartes machines photographiées avec l'app (lecture seule).
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -25,9 +25,7 @@
         compte: 'zaf57',               // votre nom d'utilisateur GitHub
         depot: 'cartes-machines',      // nom du dépôt
         branche: 'main',
-        fichier: 'presses.json',
-        token: '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'                      // facultatif : collez ici votre token (github_pat_…)
-                                       // pour ne pas avoir à le saisir à la 1re suppression
+        fichier: 'presses.json'
     };
 
     // Adresses où la pop-up doit apparaître (un morceau d'URL suffit).
@@ -93,17 +91,13 @@
 
     async function chargerDonnees() {
 
-        const auth = GITHUB.token ? { 'Authorization': 'Bearer ' + GITHUB.token } : {};
+        const api = 'https://api.github.com/repos/' + GITHUB.compte + '/' + GITHUB.depot +
+            '/contents/' + GITHUB.fichier + '?ref=' + GITHUB.branche;
+        const brut = { 'Accept': 'application/vnd.github.raw+json' };
 
-        // 1) API GitHub : toujours à jour (limite de 60 lectures/heure
-        //    sans token, largement suffisant ici).
+        // 1) API GitHub : toujours à jour (dépôt public, aucun token).
         try {
-            const texte = await requete(
-                'https://api.github.com/repos/' + GITHUB.compte + '/' + GITHUB.depot +
-                '/contents/' + GITHUB.fichier + '?ref=' + GITHUB.branche,
-                Object.assign({ 'Accept': 'application/vnd.github.raw+json' }, auth)
-            );
-            return JSON.parse(texte);
+            return JSON.parse(await requete(api, brut));
         } catch (e) {
             console.warn('[Cartes Machines] API GitHub indisponible, essai du lien direct :', e.message);
         }
@@ -112,179 +106,9 @@
         const texte = await requete(
             'https://raw.githubusercontent.com/' + GITHUB.compte + '/' + GITHUB.depot +
             '/' + GITHUB.branche + '/' + GITHUB.fichier + '?t=' + Date.now(),
-            auth
+            {}
         );
         return JSON.parse(texte);
-    }
-
-    // =========================
-    // SUPPRESSION D'UNE PRESSE (écriture sur GitHub)
-    // =========================
-
-    // L'écriture demande un token (droit "Contents : Read and write").
-    // Soit il est écrit en haut du script (GITHUB.token), soit il est
-    // saisi dans la pop-up à la première suppression et gardé par
-    // Tampermonkey.
-    function tokenEcriture() {
-        return GITHUB.token || GM_getValue('tokenEcriture', '');
-    }
-
-    // Token refusé : on oublie celui gardé par Tampermonkey, ou on indique
-    // de corriger celui écrit dans le script.
-    function oublierToken() {
-        if (GITHUB.token) return 'Vérifiez le token écrit en haut du script.';
-        GM_setValue('tokenEcriture', '');
-        return 'Saisissez-le à nouveau.';
-    }
-
-    function appelGitHub(methode, url, token, corps) {
-
-        return new Promise(function (resolve, reject) {
-
-            GM_xmlhttpRequest({
-                method: methode,
-                url: url,
-                headers: {
-                    'Authorization': 'Bearer ' + token,
-                    'Accept': 'application/vnd.github+json',
-                    'Content-Type': 'application/json',
-                    'X-GitHub-Api-Version': '2022-11-28',
-                    'Cache-Control': 'no-cache'
-                },
-                data: corps ? JSON.stringify(corps) : undefined,
-                nocache: true,
-                timeout: 20000,
-                onload: function (r) { resolve({ status: r.status, texte: r.responseText }); },
-                onerror: function () { reject(new Error('problème de réseau')); },
-                ontimeout: function () { reject(new Error('GitHub ne répond pas')); }
-            });
-        });
-    }
-
-    function base64VersTexte(b64) {
-        const binaire = atob(b64.replace(/\s/g, ''));
-        const octets = Uint8Array.from(binaire, function (c) { return c.charCodeAt(0); });
-        return new TextDecoder().decode(octets);
-    }
-
-    function texteVersBase64(texte) {
-        const octets = new TextEncoder().encode(texte);
-        let binaire = '';
-        for (let i = 0; i < octets.length; i += 0x8000) {
-            binaire += String.fromCharCode.apply(null, octets.subarray(i, i + 0x8000));
-        }
-        return btoa(binaire);
-    }
-
-    // Retire la presse de la liste ET de l'historique sur GitHub,
-    // puis renvoie les données à jour.
-    async function supprimerPresse(cle, nom, token) {
-
-        const url = 'https://api.github.com/repos/' + GITHUB.compte + '/' + GITHUB.depot +
-            '/contents/' + GITHUB.fichier;
-
-        // Trois essais : si le téléphone a écrit entre la lecture et
-        // l'écriture, GitHub refuse (conflit) et on recommence.
-        for (let essai = 0; essai < 3; essai++) {
-
-            // Adresse unique à chaque fois : évite qu'une réponse gardée en
-            // cache (celle de l'affichage, dans un autre format) soit réutilisée.
-            const lecture = await appelGitHub(
-                'GET', url + '?ref=' + GITHUB.branche + '&_=' + Date.now(), token
-            );
-
-            if (lecture.status === 401) throw new Error('token refusé. ' + oublierToken());
-            if (lecture.status === 404) throw new Error('fichier introuvable : le token a-t-il accès au dépôt ' + GITHUB.depot + ' ?');
-            if (lecture.status !== 200) throw new Error('lecture impossible (erreur ' + lecture.status + ')');
-
-            let fichier;
-            try { fichier = JSON.parse(lecture.texte); } catch (e) { fichier = null; }
-
-            if (!fichier || typeof fichier.content !== 'string' || !fichier.sha) {
-                throw new Error('réponse inattendue de GitHub, réessayez dans un instant');
-            }
-
-            const contenu = JSON.parse(base64VersTexte(fichier.content));
-
-            contenu.presses = contenu.presses || {};
-            delete contenu.presses[cle];
-            contenu.historique = (contenu.historique || []).filter(function (h) { return h.cle !== cle; });
-
-            const ecriture = await appelGitHub('PUT', url, token, {
-                message: 'Suppression ' + nom,
-                content: texteVersBase64(JSON.stringify(contenu, null, 2) + '\n'),
-                sha: fichier.sha,
-                branch: GITHUB.branche
-            });
-
-            if (ecriture.status === 200 || ecriture.status === 201) return contenu;
-            if (ecriture.status === 409 || ecriture.status === 422) continue;
-
-            if (ecriture.status === 401 || ecriture.status === 403) {
-                throw new Error('ce token n\'a pas le droit d\'écrire. ' + oublierToken());
-            }
-
-            throw new Error('écriture impossible (erreur ' + ecriture.status + ')');
-        }
-
-        throw new Error('conflit avec une autre modification, réessayez');
-    }
-
-    // --- Panneau de confirmation intégré à la pop-up --------------------
-
-    function demanderSuppression(cle) {
-        const p = donnees && donnees.presses && donnees.presses[cle];
-        confirmation = { cle: cle, nom: (p && p.presse) || cle, occupe: false, erreur: '' };
-        rendre();
-    }
-
-    async function confirmerSuppression(tokenSaisi) {
-
-        const c = confirmation;
-        if (!c || c.occupe) return;
-
-        let token = tokenEcriture();
-
-        if (!token) {
-            token = (tokenSaisi || '').trim();
-            if (!token) {
-                c.erreur = 'Collez le token GitHub pour continuer.';
-                rendre();
-                return;
-            }
-        }
-
-        c.occupe = true;
-        c.erreur = '';
-        rendre();
-
-        try {
-            donnees = await supprimerPresse(c.cle, c.nom, token);
-
-            // Token saisi dans la pop-up et accepté : on le garde.
-            if (!GITHUB.token && tokenSaisi) GM_setValue('tokenEcriture', token);
-
-            confirmation = null;
-            if (vue === 'detail') vue = 'liste';
-            notifier(c.nom + ' supprimée');
-
-        } catch (e) {
-            console.error('[Cartes Machines]', e);
-            c.occupe = false;
-            c.erreur = 'Suppression impossible : ' + e.message;
-            rendre();
-        }
-    }
-
-    // Petit bandeau de confirmation en bas de la pop-up.
-    function notifier(texte) {
-        notification = texte;
-        rendre();
-        clearTimeout(notifier.minuterie);
-        notifier.minuterie = setTimeout(function () {
-            notification = '';
-            rendre();
-        }, 3000);
     }
 
     // =========================
@@ -387,30 +211,7 @@
             background: #f6f7f9; color: #1b2430; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
         }
         .actions button:hover { background: #eef0f3; }
-        .actions button.danger { color: #b91c1c; border-color: #f3c7c7; background: #fdecec; }
-        .actions button.danger:hover { background: #fadada; }
         button:disabled { opacity: .6; cursor: wait; }
-        .confirm { padding: 20px 16px 16px; text-align: center; }
-        .confirm-icone {
-            width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 50%;
-            display: grid; place-items: center; font-size: 22px; background: #fdecec;
-        }
-        .confirm-titre { font-size: 17px; font-weight: 800; color: #1b2430; }
-        .confirm-texte { color: #66707d; font-size: 13px; margin: 4px 0 14px; }
-        .confirm-label {
-            display: block; text-align: left; font-size: 12px; font-weight: 600; color: #66707d; margin-bottom: 12px;
-        }
-        .confirm-label input { margin-top: 5px; }
-        .confirm-erreur {
-            text-align: left; font-size: 13px; color: #b91c1c; background: #fdecec;
-            border-radius: 10px; padding: 8px 10px; margin-bottom: 12px;
-        }
-        .actions button.danger.plein { background: #dc2626; border-color: #dc2626; color: #fff; }
-        .actions button.danger.plein:hover { background: #b91c1c; }
-        .notif {
-            margin: 0 16px 14px; padding: 8px 12px; border-radius: 10px;
-            background: #e8f5ec; color: #15803d; font-size: 13px; font-weight: 600;
-        }
         .vide, .erreur { color: #66707d; padding: 6px 0; }
         .erreur { color: #b91c1c; }
         .liste { max-height: 280px; overflow-y: auto; margin: 10px -16px 0; }
@@ -426,12 +227,6 @@
             color: #66707d; display: block; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .poubelle {
-            flex: none; width: 32px; height: 32px; border-radius: 8px; border: 0;
-            background: transparent; font-size: 15px; cursor: pointer; opacity: .45;
-        }
-        .item:hover .poubelle { opacity: .9; }
-        .poubelle:hover { background: #fdecec; opacity: 1; }
         input.recherche {
             width: 100%; padding: 9px 11px; border: 1px solid #dde1e6; border-radius: 10px;
             font: inherit; background: #f6f7f9; color: #1b2430;
@@ -462,8 +257,6 @@
     let vue = 'derniere';          // 'derniere' | 'liste' | 'detail'
     let detailCle = null;
     let recherche = '';
-    let confirmation = null;       // { cle, nom, occupe, erreur } pendant une suppression
-    let notification = '';
 
     function dejaVue(carte) {
         return carte && carte.date && GM_getValue('derniereVue', '') >= carte.date;
@@ -537,13 +330,6 @@
         entete.appendChild(fermer);
         pop.appendChild(entete);
 
-        // --- Confirmation de suppression (remplace le contenu) ---------
-        if (confirmation) {
-            pop.appendChild(rendreConfirmation());
-            conteneur.appendChild(pop);
-            return;
-        }
-
         // --- Contenu ---------------------------------------------------
         if (erreur && !donnees) {
 
@@ -588,9 +374,6 @@
             btnRetour.addEventListener('click', function () { vue = 'liste'; rendre(); });
             actions.appendChild(btnRetour);
 
-            const btnSuppr = el('button', 'danger', '🗑 Supprimer');
-            btnSuppr.addEventListener('click', function () { demanderSuppression(detailCle); });
-            actions.appendChild(btnSuppr);
         } else {
             const btnRetour = el('button', '', '← Dernière');
             btnRetour.addEventListener('click', function () { vue = 'derniere'; rendre(); });
@@ -606,54 +389,7 @@
 
         pop.appendChild(actions);
 
-        if (notification) pop.appendChild(el('div', 'notif', '✓ ' + notification));
-
         conteneur.appendChild(pop);
-    }
-
-    function rendreConfirmation() {
-
-        const c = confirmation;
-        const bloc = el('div', 'confirm');
-
-        const icone = el('div', 'confirm-icone', '🗑');
-        bloc.appendChild(icone);
-        bloc.appendChild(el('div', 'confirm-titre', 'Supprimer ' + c.nom + ' ?'));
-        bloc.appendChild(el('div', 'confirm-texte', 'La presse sera retirée de la liste et de l\'historique.'));
-
-        // Pas encore de token : on le demande ici, une seule fois.
-        let champ = null;
-        if (!tokenEcriture()) {
-            const label = el('label', 'confirm-label', 'Token GitHub (demandé une seule fois)');
-            champ = el('input', 'recherche');
-            champ.type = 'password';
-            champ.placeholder = 'github_pat_…';
-            champ.autocomplete = 'off';
-            label.appendChild(champ);
-            bloc.appendChild(label);
-            champ.addEventListener('keydown', function (ev) {
-                if (ev.key === 'Enter') confirmerSuppression(champ.value);
-            });
-            setTimeout(function () { champ.focus(); }, 0);
-        }
-
-        if (c.erreur) bloc.appendChild(el('div', 'confirm-erreur', c.erreur));
-
-        const actions = el('div', 'actions');
-        actions.style.padding = '0';
-
-        const annuler = el('button', '', 'Annuler');
-        annuler.disabled = c.occupe;
-        annuler.addEventListener('click', function () { confirmation = null; rendre(); });
-
-        const valider = el('button', 'danger plein', c.occupe ? 'Suppression…' : 'Supprimer');
-        valider.disabled = c.occupe;
-        valider.addEventListener('click', function () { confirmerSuppression(champ ? champ.value : ''); });
-
-        actions.append(annuler, valider);
-        bloc.appendChild(actions);
-
-        return bloc;
     }
 
     function rendreListe() {
@@ -701,14 +437,6 @@
                 texte.appendChild(el('small', '',
                     [c.spec, c.bladderCode, c.bladderType, c.bladderDate].filter(Boolean).join(' · ') || '—'));
                 item.appendChild(texte);
-
-                const poubelle = el('button', 'poubelle', '🗑');
-                poubelle.title = 'Supprimer cette presse';
-                poubelle.addEventListener('click', function (ev) {
-                    ev.stopPropagation();
-                    demanderSuppression(c.cle);
-                });
-                item.appendChild(poubelle);
 
                 item.addEventListener('click', function () {
                     vue = 'detail';
