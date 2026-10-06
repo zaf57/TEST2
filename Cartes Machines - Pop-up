@@ -1,0 +1,753 @@
+// ==UserScript==
+// @name         Cartes Machines - Pop-up
+// @namespace    cartes-machines
+// @version      1.6
+// @description  Affiche dans une pop-up les infos des cartes machines photographiées avec l'app.
+// @match        *://*/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @connect      api.github.com
+// @connect      raw.githubusercontent.com
+// @run-at       document-idle
+// @noframes
+// ==/UserScript==
+
+(function () {
+
+    'use strict';
+
+    // =========================
+    // RÉGLAGES — À COMPLÉTER
+    // =========================
+
+    const GITHUB = {
+        compte: 'zaf57',               // votre nom d'utilisateur GitHub
+        depot: 'cartes-machines',      // nom du dépôt
+        branche: 'main',
+        fichier: 'presses.json',
+        token: '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'                      // facultatif : collez ici votre token (github_pat_…)
+                                       // pour ne pas avoir à le saisir à la 1re suppression
+    };
+
+    // Adresses où la pop-up doit apparaître (un morceau d'URL suffit).
+    // Liste vide = la pop-up apparaît sur TOUS les sites.
+    const ADRESSES_ACTIVES = [
+        // 'sgsrv67.tiretech.contiwan.com',
+    ];
+
+    // Vérification d'une nouvelle carte toutes les X secondes.
+    const INTERVALLE_SECONDES = 90;
+
+    // =========================
+    // FILTRE D'ADRESSE
+    // =========================
+
+    function estAdresseActive() {
+
+        if (ADRESSES_ACTIVES.length === 0) return true;
+
+        const url = window.location.href;
+
+        return ADRESSES_ACTIVES.some(function (adresse) {
+            return url.includes(adresse);
+        });
+    }
+
+    if (!estAdresseActive()) return;
+
+    // =========================
+    // LECTURE DU FICHIER SUR GITHUB
+    // =========================
+
+    function requete(url, entetes) {
+
+        return new Promise(function (resolve, reject) {
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                headers: entetes,
+                timeout: 15000,
+                onload: function (r) {
+                    if (r.status >= 200 && r.status < 300) resolve(r.responseText);
+                    else reject(new Error('HTTP ' + r.status));
+                },
+                onerror: function () { reject(new Error('réseau')); },
+                ontimeout: function () { reject(new Error('délai dépassé')); }
+            });
+        });
+    }
+
+    async function chargerDonnees() {
+
+        const auth = GITHUB.token ? { 'Authorization': 'Bearer ' + GITHUB.token } : {};
+
+        // 1) API GitHub : toujours à jour (limite de 60 lectures/heure
+        //    sans token, largement suffisant ici).
+        try {
+            const texte = await requete(
+                'https://api.github.com/repos/' + GITHUB.compte + '/' + GITHUB.depot +
+                '/contents/' + GITHUB.fichier + '?ref=' + GITHUB.branche,
+                Object.assign({ 'Accept': 'application/vnd.github.raw+json' }, auth)
+            );
+            return JSON.parse(texte);
+        } catch (e) {
+            console.warn('[Cartes Machines] API GitHub indisponible, essai du lien direct :', e.message);
+        }
+
+        // 2) Secours : lien direct (peut avoir quelques minutes de retard).
+        const texte = await requete(
+            'https://raw.githubusercontent.com/' + GITHUB.compte + '/' + GITHUB.depot +
+            '/' + GITHUB.branche + '/' + GITHUB.fichier + '?t=' + Date.now(),
+            auth
+        );
+        return JSON.parse(texte);
+    }
+
+    // =========================
+    // SUPPRESSION D'UNE PRESSE (écriture sur GitHub)
+    // =========================
+
+    // L'écriture demande un token (droit "Contents : Read and write").
+    // Soit il est écrit en haut du script (GITHUB.token), soit il est
+    // saisi dans la pop-up à la première suppression et gardé par
+    // Tampermonkey.
+    function tokenEcriture() {
+        return GITHUB.token || GM_getValue('tokenEcriture', '');
+    }
+
+    // Token refusé : on oublie celui gardé par Tampermonkey, ou on indique
+    // de corriger celui écrit dans le script.
+    function oublierToken() {
+        if (GITHUB.token) return 'Vérifiez le token écrit en haut du script.';
+        GM_setValue('tokenEcriture', '');
+        return 'Saisissez-le à nouveau.';
+    }
+
+    function appelGitHub(methode, url, token, corps) {
+
+        return new Promise(function (resolve, reject) {
+
+            GM_xmlhttpRequest({
+                method: methode,
+                url: url,
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json',
+                    'X-GitHub-Api-Version': '2022-11-28',
+                    'Cache-Control': 'no-cache'
+                },
+                data: corps ? JSON.stringify(corps) : undefined,
+                nocache: true,
+                timeout: 20000,
+                onload: function (r) { resolve({ status: r.status, texte: r.responseText }); },
+                onerror: function () { reject(new Error('problème de réseau')); },
+                ontimeout: function () { reject(new Error('GitHub ne répond pas')); }
+            });
+        });
+    }
+
+    function base64VersTexte(b64) {
+        const binaire = atob(b64.replace(/\s/g, ''));
+        const octets = Uint8Array.from(binaire, function (c) { return c.charCodeAt(0); });
+        return new TextDecoder().decode(octets);
+    }
+
+    function texteVersBase64(texte) {
+        const octets = new TextEncoder().encode(texte);
+        let binaire = '';
+        for (let i = 0; i < octets.length; i += 0x8000) {
+            binaire += String.fromCharCode.apply(null, octets.subarray(i, i + 0x8000));
+        }
+        return btoa(binaire);
+    }
+
+    // Retire la presse de la liste ET de l'historique sur GitHub,
+    // puis renvoie les données à jour.
+    async function supprimerPresse(cle, nom, token) {
+
+        const url = 'https://api.github.com/repos/' + GITHUB.compte + '/' + GITHUB.depot +
+            '/contents/' + GITHUB.fichier;
+
+        // Trois essais : si le téléphone a écrit entre la lecture et
+        // l'écriture, GitHub refuse (conflit) et on recommence.
+        for (let essai = 0; essai < 3; essai++) {
+
+            // Adresse unique à chaque fois : évite qu'une réponse gardée en
+            // cache (celle de l'affichage, dans un autre format) soit réutilisée.
+            const lecture = await appelGitHub(
+                'GET', url + '?ref=' + GITHUB.branche + '&_=' + Date.now(), token
+            );
+
+            if (lecture.status === 401) throw new Error('token refusé. ' + oublierToken());
+            if (lecture.status === 404) throw new Error('fichier introuvable : le token a-t-il accès au dépôt ' + GITHUB.depot + ' ?');
+            if (lecture.status !== 200) throw new Error('lecture impossible (erreur ' + lecture.status + ')');
+
+            let fichier;
+            try { fichier = JSON.parse(lecture.texte); } catch (e) { fichier = null; }
+
+            if (!fichier || typeof fichier.content !== 'string' || !fichier.sha) {
+                throw new Error('réponse inattendue de GitHub, réessayez dans un instant');
+            }
+
+            const contenu = JSON.parse(base64VersTexte(fichier.content));
+
+            contenu.presses = contenu.presses || {};
+            delete contenu.presses[cle];
+            contenu.historique = (contenu.historique || []).filter(function (h) { return h.cle !== cle; });
+
+            const ecriture = await appelGitHub('PUT', url, token, {
+                message: 'Suppression ' + nom,
+                content: texteVersBase64(JSON.stringify(contenu, null, 2) + '\n'),
+                sha: fichier.sha,
+                branch: GITHUB.branche
+            });
+
+            if (ecriture.status === 200 || ecriture.status === 201) return contenu;
+            if (ecriture.status === 409 || ecriture.status === 422) continue;
+
+            if (ecriture.status === 401 || ecriture.status === 403) {
+                throw new Error('ce token n\'a pas le droit d\'écrire. ' + oublierToken());
+            }
+
+            throw new Error('écriture impossible (erreur ' + ecriture.status + ')');
+        }
+
+        throw new Error('conflit avec une autre modification, réessayez');
+    }
+
+    // --- Panneau de confirmation intégré à la pop-up --------------------
+
+    function demanderSuppression(cle) {
+        const p = donnees && donnees.presses && donnees.presses[cle];
+        confirmation = { cle: cle, nom: (p && p.presse) || cle, occupe: false, erreur: '' };
+        rendre();
+    }
+
+    async function confirmerSuppression(tokenSaisi) {
+
+        const c = confirmation;
+        if (!c || c.occupe) return;
+
+        let token = tokenEcriture();
+
+        if (!token) {
+            token = (tokenSaisi || '').trim();
+            if (!token) {
+                c.erreur = 'Collez le token GitHub pour continuer.';
+                rendre();
+                return;
+            }
+        }
+
+        c.occupe = true;
+        c.erreur = '';
+        rendre();
+
+        try {
+            donnees = await supprimerPresse(c.cle, c.nom, token);
+
+            // Token saisi dans la pop-up et accepté : on le garde.
+            if (!GITHUB.token && tokenSaisi) GM_setValue('tokenEcriture', token);
+
+            confirmation = null;
+            if (vue === 'detail') vue = 'liste';
+            notifier(c.nom + ' supprimée');
+
+        } catch (e) {
+            console.error('[Cartes Machines]', e);
+            c.occupe = false;
+            c.erreur = 'Suppression impossible : ' + e.message;
+            rendre();
+        }
+    }
+
+    // Petit bandeau de confirmation en bas de la pop-up.
+    function notifier(texte) {
+        notification = texte;
+        rendre();
+        clearTimeout(notifier.minuterie);
+        notifier.minuterie = setTimeout(function () {
+            notification = '';
+            rendre();
+        }, 3000);
+    }
+
+    // =========================
+    // OUTILS
+    // =========================
+
+    function ilYA(dateIso) {
+
+        if (!dateIso) return '';
+
+        const secondes = Math.round((Date.now() - new Date(dateIso).getTime()) / 1000);
+
+        if (secondes < 60) return 'à l\'instant';
+        if (secondes < 3600) return 'il y a ' + Math.floor(secondes / 60) + ' min';
+        if (secondes < 86400) return 'il y a ' + Math.floor(secondes / 3600) + ' h';
+
+        return new Date(dateIso).toLocaleString('fr-FR', {
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+    }
+
+    function el(tag, classe, texte) {
+        const e = document.createElement(tag);
+        if (classe) e.className = classe;
+        if (texte !== undefined) e.textContent = texte;
+        return e;
+    }
+
+    function derniereCarte(donnees) {
+
+        if (!donnees) return null;
+
+        if (Array.isArray(donnees.historique) && donnees.historique.length) {
+            return donnees.historique[0];
+        }
+
+        const liste = Object.keys(donnees.presses || {}).map(function (cle) {
+            return Object.assign({ cle: cle }, donnees.presses[cle]);
+        });
+
+        liste.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+        return liste[0] || null;
+    }
+
+    // =========================
+    // INTERFACE (isolée de la page dans un Shadow DOM)
+    // =========================
+
+    const hote = document.createElement('div');
+    hote.setAttribute('data-cartes-machines', '');
+    hote.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:2147483647;';
+    document.body.appendChild(hote);
+
+    const racine = hote.attachShadow({ mode: 'open' });
+
+    const style = document.createElement('style');
+    style.textContent = `
+        * { box-sizing: border-box; }
+        :host { all: initial; }
+        .pop {
+            width: 310px; max-width: calc(100vw - 32px);
+            font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            color: #1b2430; background: #fff;
+            border-radius: 16px; overflow: hidden;
+            box-shadow: 0 16px 40px rgba(16,24,40,.28), 0 0 0 1px rgba(16,24,40,.08);
+            animation: entree .22s ease-out;
+        }
+        @keyframes entree { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .entete {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 11px 12px 11px 14px;
+            background: linear-gradient(180deg, #2b3744, #1f2933); color: #fff;
+            border-bottom: 3px solid #ea7a12;
+        }
+        .entete b { font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+        .entete button {
+            width: 28px; height: 28px; border-radius: 8px;
+            background: rgba(255,255,255,.08); border: 0; color: #fff; font-size: 18px; line-height: 1;
+            cursor: pointer;
+        }
+        .entete button:hover { background: rgba(255,255,255,.18); }
+        .corps { padding: 14px 16px; }
+        .nouveau {
+            display: inline-block; background: #fdf1e5; color: #c9640a;
+            font-size: 10px; font-weight: 800; letter-spacing: .06em;
+            padding: 3px 9px; border-radius: 999px; margin-bottom: 8px;
+        }
+        .presse { font-size: 28px; font-weight: 800; color: #1565c0; margin: 0; letter-spacing: .01em; }
+        .quand { color: #66707d; font-size: 12px; margin-bottom: 10px; }
+        .ligne {
+            display: flex; justify-content: space-between; align-items: baseline;
+            padding: 8px 0; border-top: 1px solid #eef0f3;
+        }
+        .ligne span { color: #66707d; font-size: 12px; }
+        .ligne b { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 16px; }
+        .actions { display: flex; gap: 8px; padding: 0 16px 16px; }
+        .actions button {
+            flex: 1; padding: 9px 6px; border-radius: 10px; border: 1px solid #dde1e6;
+            background: #f6f7f9; color: #1b2430; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        .actions button:hover { background: #eef0f3; }
+        .actions button.danger { color: #b91c1c; border-color: #f3c7c7; background: #fdecec; }
+        .actions button.danger:hover { background: #fadada; }
+        button:disabled { opacity: .6; cursor: wait; }
+        .confirm { padding: 20px 16px 16px; text-align: center; }
+        .confirm-icone {
+            width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 50%;
+            display: grid; place-items: center; font-size: 22px; background: #fdecec;
+        }
+        .confirm-titre { font-size: 17px; font-weight: 800; color: #1b2430; }
+        .confirm-texte { color: #66707d; font-size: 13px; margin: 4px 0 14px; }
+        .confirm-label {
+            display: block; text-align: left; font-size: 12px; font-weight: 600; color: #66707d; margin-bottom: 12px;
+        }
+        .confirm-label input { margin-top: 5px; }
+        .confirm-erreur {
+            text-align: left; font-size: 13px; color: #b91c1c; background: #fdecec;
+            border-radius: 10px; padding: 8px 10px; margin-bottom: 12px;
+        }
+        .actions button.danger.plein { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .actions button.danger.plein:hover { background: #b91c1c; }
+        .notif {
+            margin: 0 16px 14px; padding: 8px 12px; border-radius: 10px;
+            background: #e8f5ec; color: #15803d; font-size: 13px; font-weight: 600;
+        }
+        .vide, .erreur { color: #66707d; padding: 6px 0; }
+        .erreur { color: #b91c1c; }
+        .liste { max-height: 280px; overflow-y: auto; margin: 10px -16px 0; }
+        .liste .item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 16px; border-top: 1px solid #eef0f3; cursor: pointer;
+        }
+        .liste .item:hover { background: #f6f7f9; }
+        .liste .texte { flex: 1; min-width: 0; }
+        .liste .item b { color: #1565c0; font-size: 15px; }
+        .liste .item em { font-style: normal; color: #66707d; font-size: 11px; margin-left: 6px; }
+        .liste .item small {
+            color: #66707d; display: block; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .poubelle {
+            flex: none; width: 32px; height: 32px; border-radius: 8px; border: 0;
+            background: transparent; font-size: 15px; cursor: pointer; opacity: .45;
+        }
+        .item:hover .poubelle { opacity: .9; }
+        .poubelle:hover { background: #fdecec; opacity: 1; }
+        input.recherche {
+            width: 100%; padding: 9px 11px; border: 1px solid #dde1e6; border-radius: 10px;
+            font: inherit; background: #f6f7f9; color: #1b2430;
+        }
+        input.recherche:focus { outline: none; border-color: #ea7a12; box-shadow: 0 0 0 3px rgba(234,122,18,.18); }
+        .bulle {
+            width: 54px; height: 54px; border-radius: 16px; border: 0; cursor: pointer;
+            background: linear-gradient(180deg, #2b3744, #1f2933); color: #fff; font-size: 24px;
+            box-shadow: 0 8px 20px rgba(0,0,0,.3), inset 0 -3px 0 #ea7a12; position: relative;
+        }
+        .bulle .point {
+            position: absolute; top: 4px; right: 4px; width: 12px; height: 12px;
+            border-radius: 50%; background: #ea7a12; border: 2px solid #fff;
+        }
+    `;
+    racine.appendChild(style);
+
+    const conteneur = el('div');
+    racine.appendChild(conteneur);
+
+    // =========================
+    // ÉTAT
+    // =========================
+
+    let donnees = null;
+    let erreur = '';
+    let ouvert = false;            // fermée (bulle) à l'ouverture de la page
+    let vue = 'derniere';          // 'derniere' | 'liste' | 'detail'
+    let detailCle = null;
+    let recherche = '';
+    let confirmation = null;       // { cle, nom, occupe, erreur } pendant une suppression
+    let notification = '';
+
+    function dejaVue(carte) {
+        return carte && carte.date && GM_getValue('derniereVue', '') >= carte.date;
+    }
+
+    function marquerVue(carte) {
+        if (carte && carte.date) GM_setValue('derniereVue', carte.date);
+    }
+
+    // =========================
+    // AFFICHAGE
+    // =========================
+
+    function ficheCarte(carte, nouvelle) {
+
+        const corps = el('div', 'corps');
+
+        if (nouvelle) corps.appendChild(el('div', 'nouveau', 'NOUVELLE CARTE'));
+
+        corps.appendChild(el('p', 'presse', carte.presse || carte.cle || '—'));
+        corps.appendChild(el('div', 'quand', 'Photo ' + ilYA(carte.date)));
+
+        [
+            ['Specification Code', carte.spec],
+            ['BladderCode', carte.bladderCode],
+            ['BladderType', carte.bladderType],
+            ['Date bladder', carte.bladderDate]
+        ].forEach(function (l) {
+            const ligne = el('div', 'ligne');
+            ligne.appendChild(el('span', '', l[0]));
+            ligne.appendChild(el('b', '', l[1] || '—'));
+            corps.appendChild(ligne);
+        });
+
+        return corps;
+    }
+
+    function rendre() {
+
+        conteneur.innerHTML = '';
+
+        const derniere = derniereCarte(donnees);
+
+        // --- Pop-up fermée : petite bulle ----------------------------
+        if (!ouvert) {
+            const bulle = el('button', 'bulle', '🏭');
+            bulle.title = 'Cartes machines';
+            if (derniere && !dejaVue(derniere)) bulle.appendChild(el('span', 'point'));
+            bulle.addEventListener('click', function () {
+                ouvert = true;
+                vue = 'derniere';
+                rendre();
+            });
+            conteneur.appendChild(bulle);
+            return;
+        }
+
+        const pop = el('div', 'pop');
+
+        // --- En-tête ---------------------------------------------------
+        const entete = el('div', 'entete');
+        entete.appendChild(el('b', '', vue === 'liste' ? '🏭 TOUTES LES PRESSES' : '🏭 CARTE MACHINE'));
+
+        const fermer = el('button', '', '×');
+        fermer.title = 'Fermer';
+        fermer.addEventListener('click', function () {
+            marquerVue(derniere);
+            ouvert = false;
+            rendre();
+        });
+        entete.appendChild(fermer);
+        pop.appendChild(entete);
+
+        // --- Confirmation de suppression (remplace le contenu) ---------
+        if (confirmation) {
+            pop.appendChild(rendreConfirmation());
+            conteneur.appendChild(pop);
+            return;
+        }
+
+        // --- Contenu ---------------------------------------------------
+        if (erreur && !donnees) {
+
+            const corps = el('div', 'corps');
+            corps.appendChild(el('div', 'erreur', 'Impossible de lire les données : ' + erreur));
+            pop.appendChild(corps);
+
+        } else if (!donnees) {
+
+            const corps = el('div', 'corps');
+            corps.appendChild(el('div', 'vide', 'Chargement…'));
+            pop.appendChild(corps);
+
+        } else if (vue === 'liste') {
+
+            pop.appendChild(rendreListe());
+
+        } else if (vue === 'detail' && donnees.presses && donnees.presses[detailCle]) {
+
+            pop.appendChild(ficheCarte(Object.assign({ cle: detailCle }, donnees.presses[detailCle]), false));
+
+        } else if (derniere) {
+
+            pop.appendChild(ficheCarte(derniere, !dejaVue(derniere)));
+
+        } else {
+
+            const corps = el('div', 'corps');
+            corps.appendChild(el('div', 'vide', 'Aucune carte enregistrée pour l\'instant.'));
+            pop.appendChild(corps);
+        }
+
+        // --- Boutons ---------------------------------------------------
+        const actions = el('div', 'actions');
+
+        if (vue === 'derniere') {
+            const btnListe = el('button', '', '📋 Toutes');
+            btnListe.addEventListener('click', function () { vue = 'liste'; rendre(); });
+            actions.appendChild(btnListe);
+        } else if (vue === 'detail') {
+            const btnRetour = el('button', '', '← Liste');
+            btnRetour.addEventListener('click', function () { vue = 'liste'; rendre(); });
+            actions.appendChild(btnRetour);
+
+            const btnSuppr = el('button', 'danger', '🗑 Supprimer');
+            btnSuppr.addEventListener('click', function () { demanderSuppression(detailCle); });
+            actions.appendChild(btnSuppr);
+        } else {
+            const btnRetour = el('button', '', '← Dernière');
+            btnRetour.addEventListener('click', function () { vue = 'derniere'; rendre(); });
+            actions.appendChild(btnRetour);
+        }
+
+        const btnMaj = el('button', '', '🔄 Actualiser');
+        btnMaj.addEventListener('click', function () {
+            btnMaj.textContent = '⏳…';
+            actualiser();
+        });
+        actions.appendChild(btnMaj);
+
+        pop.appendChild(actions);
+
+        if (notification) pop.appendChild(el('div', 'notif', '✓ ' + notification));
+
+        conteneur.appendChild(pop);
+    }
+
+    function rendreConfirmation() {
+
+        const c = confirmation;
+        const bloc = el('div', 'confirm');
+
+        const icone = el('div', 'confirm-icone', '🗑');
+        bloc.appendChild(icone);
+        bloc.appendChild(el('div', 'confirm-titre', 'Supprimer ' + c.nom + ' ?'));
+        bloc.appendChild(el('div', 'confirm-texte', 'La presse sera retirée de la liste et de l\'historique.'));
+
+        // Pas encore de token : on le demande ici, une seule fois.
+        let champ = null;
+        if (!tokenEcriture()) {
+            const label = el('label', 'confirm-label', 'Token GitHub (demandé une seule fois)');
+            champ = el('input', 'recherche');
+            champ.type = 'password';
+            champ.placeholder = 'github_pat_…';
+            champ.autocomplete = 'off';
+            label.appendChild(champ);
+            bloc.appendChild(label);
+            champ.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') confirmerSuppression(champ.value);
+            });
+            setTimeout(function () { champ.focus(); }, 0);
+        }
+
+        if (c.erreur) bloc.appendChild(el('div', 'confirm-erreur', c.erreur));
+
+        const actions = el('div', 'actions');
+        actions.style.padding = '0';
+
+        const annuler = el('button', '', 'Annuler');
+        annuler.disabled = c.occupe;
+        annuler.addEventListener('click', function () { confirmation = null; rendre(); });
+
+        const valider = el('button', 'danger plein', c.occupe ? 'Suppression…' : 'Supprimer');
+        valider.disabled = c.occupe;
+        valider.addEventListener('click', function () { confirmerSuppression(champ ? champ.value : ''); });
+
+        actions.append(annuler, valider);
+        bloc.appendChild(actions);
+
+        return bloc;
+    }
+
+    function rendreListe() {
+
+        const corps = el('div', 'corps');
+
+        const champ = el('input', 'recherche');
+        champ.placeholder = 'Rechercher (presse, spec, bladder…)';
+        champ.value = recherche;
+        corps.appendChild(champ);
+
+        const liste = el('div', 'liste');
+        corps.appendChild(liste);
+
+        function remplir() {
+
+            liste.innerHTML = '';
+
+            const q = recherche.toLowerCase().replace(/\s+/g, '');
+
+            const cartes = Object.keys(donnees.presses || {})
+                .map(function (cle) { return Object.assign({ cle: cle }, donnees.presses[cle]); })
+                .filter(function (c) {
+                    if (!q) return true;
+                    return [c.cle, c.presse, c.spec, c.bladderCode, c.bladderType, c.bladderDate]
+                        .join(' ').toLowerCase().replace(/\s+/g, '').includes(q);
+                })
+                .sort(function (a, b) {
+                    return (a.cle || '').localeCompare(b.cle || '', 'fr', { numeric: true });
+                });
+
+            if (!cartes.length) {
+                liste.appendChild(el('div', 'vide',
+                    Object.keys(donnees.presses || {}).length ? 'Aucun résultat.' : 'Aucune presse enregistrée.'));
+                return;
+            }
+
+            cartes.forEach(function (c) {
+
+                const item = el('div', 'item');
+
+                const texte = el('div', 'texte');
+                texte.appendChild(el('b', '', c.presse || c.cle));
+                texte.appendChild(el('em', '', ilYA(c.date)));
+                texte.appendChild(el('small', '',
+                    [c.spec, c.bladderCode, c.bladderType, c.bladderDate].filter(Boolean).join(' · ') || '—'));
+                item.appendChild(texte);
+
+                const poubelle = el('button', 'poubelle', '🗑');
+                poubelle.title = 'Supprimer cette presse';
+                poubelle.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
+                    demanderSuppression(c.cle);
+                });
+                item.appendChild(poubelle);
+
+                item.addEventListener('click', function () {
+                    vue = 'detail';
+                    detailCle = c.cle;
+                    rendre();
+                });
+
+                liste.appendChild(item);
+            });
+        }
+
+        champ.addEventListener('input', function () {
+            recherche = champ.value;
+            remplir();
+        });
+
+        remplir();
+        setTimeout(function () { champ.focus(); }, 0);
+
+        return corps;
+    }
+
+    // =========================
+    // ACTUALISATION
+    // =========================
+
+    async function actualiser() {
+
+        try {
+            donnees = await chargerDonnees();
+            erreur = '';
+        } catch (e) {
+            erreur = e.message;
+            console.error('[Cartes Machines]', e);
+        }
+
+        // Nouvelle carte : la pop-up reste fermée, la bulle affiche
+        // simplement un point orange (voir rendre()).
+
+        // Ne pas effacer ce que l'utilisateur tape dans la recherche.
+        const rechercheActive = vue === 'liste' && racine.activeElement &&
+            racine.activeElement.classList.contains('recherche');
+
+        if (!rechercheActive) rendre();
+    }
+
+    rendre();
+    actualiser();
+
+    setInterval(actualiser, INTERVALLE_SECONDES * 1000);
+
+    console.log('[Cartes Machines] ACTIF');
+
+})();
