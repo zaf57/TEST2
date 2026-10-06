@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cartes Machines - Pop-up
 // @namespace    cartes-machines
-// @version      1.6
+// @version      1.7
 // @description  Affiche dans une pop-up les infos des cartes machines photographiées avec l'app.
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -31,9 +31,16 @@
     };
 
     // Adresses où la pop-up doit apparaître (un morceau d'URL suffit).
-    // Liste vide = la pop-up apparaît sur TOUS les sites.
+    // Liste vide = la pop-up apparaît sur TOUS les sites (sauf exclusions).
     const ADRESSES_ACTIVES = [
-        // 'sgsrv67.tiretech.contiwan.com',
+        'manufacturingworkflows.conti.de/suite/sites/dftc'
+    ];
+
+    // Adresses où le script est toujours désactivé (prioritaire sur
+    // la liste ci-dessus).
+    const ADRESSES_EXCLUES = [
+        'http://sgsrv67.tiretech.contiwan.com',
+        'https://sgtmsrv41.tiremes.contiwan.com'
     ];
 
     // Vérification d'une nouvelle carte toutes les X secondes.
@@ -45,9 +52,14 @@
 
     function estAdresseActive() {
 
-        if (ADRESSES_ACTIVES.length === 0) return true;
-
         const url = window.location.href;
+
+        const exclue = ADRESSES_EXCLUES.some(function (adresse) {
+            return url.includes(adresse);
+        });
+
+        if (exclue) return false;
+        if (ADRESSES_ACTIVES.length === 0) return true;
 
         return ADRESSES_ACTIVES.some(function (adresse) {
             return url.includes(adresse);
